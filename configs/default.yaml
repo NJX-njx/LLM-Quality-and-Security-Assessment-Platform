@@ -1,0 +1,79 @@
+# ============================================================
+# LLM Assessment Platform — Default Configuration
+# ============================================================
+# This is the baseline configuration used when no overrides are
+# specified.  All values here match the dataclass defaults.
+
+# --- Assessment Metadata ---
+assessment_name: default
+tags: []
+
+# --- LLM Provider ---
+provider: mock
+model_name: null
+api_key: null
+provider_options: {}
+
+# --- Benchmark Module ---
+benchmark:
+  enabled: true
+  max_questions: null          # null = no cap (run all questions)
+  benchmarks: null             # null = all available benchmarks
+  categories: null             # null = all categories
+  timeout_per_question: 30.0
+  shuffle_questions: false
+
+# --- Security Red Teaming Module ---
+red_team:
+  enabled: true
+  tests: null                  # null = all available tests
+  categories: null
+  severity_threshold: low      # low | medium | high | critical
+  auto_attack_enabled: false
+  max_attacks_per_test: null
+
+# --- Alignment Verification Module ---
+alignment:
+  enabled: true
+  tests: null
+  categories: null
+
+# --- Evaluation Engine ---
+evaluation:
+  default_method: rule         # rule | llm_judge | hybrid
+  judge_model: null
+  judge_provider: null
+  judge_api_key: null
+  fallback_to_rule: true
+  cache_evaluations: true
+  confidence_threshold: 0.7
+
+# --- Health Score Weights (must sum to 1.0) ---
+scoring:
+  benchmark_weight: 0.4
+  security_weight: 0.3
+  alignment_weight: 0.3
+  excellent_threshold: 90.0
+  good_threshold: 75.0
+  fair_threshold: 60.0
+  category_weights: {}
+
+# --- Report Generation ---
+report:
+  formats:
+    - html
+  output_dir: "."
+  include_details: true
+  include_recommendations: true
+  max_detail_examples: 10
+  template_dir: null
+
+# --- Execution Behaviour ---
+execution:
+  continue_on_error: true
+  show_progress: true
+  verbose: false
+  dry_run: false
+  max_concurrent: 1
+  retry_failed: false
+  log_level: INFO

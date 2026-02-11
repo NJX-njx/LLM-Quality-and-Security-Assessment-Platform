@@ -1,8 +1,8 @@
 """
-Shared utilities for LLM providers.
+LLM 提供者共享工具模块
 
-Includes retry logic, rate limiting, usage tracking, and cost estimation.
-All providers share these infrastructure components.
+包含重试逻辑、速率限制、用量跟踪和成本估算等基础设施组件。
+所有提供者共享这些基础组件。
 """
 
 import time
@@ -17,39 +17,39 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
-# Configuration Dataclasses
+# 配置数据类
 # ============================================================
 
 @dataclass
 class RetryConfig:
-    """Configuration for retry behavior with exponential backoff."""
-    max_retries: int = 3
-    base_delay: float = 1.0
-    max_delay: float = 60.0
-    exponential_base: float = 2.0
-    jitter: bool = True
-    retryable_status_codes: Tuple[int, ...] = (429, 500, 502, 503, 504)
+    """重试行为配置，支持指数退避"""
+    max_retries: int = 3                # 最大重试次数
+    base_delay: float = 1.0             # 基础延迟（秒）
+    max_delay: float = 60.0             # 最大延迟（秒）
+    exponential_base: float = 2.0       # 指数基数
+    jitter: bool = True                 # 是否添加随机抖动
+    retryable_status_codes: Tuple[int, ...] = (429, 500, 502, 503, 504)  # 可重试的 HTTP 状态码
 
 
 @dataclass
 class RateLimitConfig:
-    """Configuration for token-bucket rate limiting."""
-    requests_per_minute: int = 60
-    tokens_per_minute: int = 90000
-    enabled: bool = True
+    """令牌桶速率限制配置"""
+    requests_per_minute: int = 60       # 每分钟请求数限制
+    tokens_per_minute: int = 90000      # 每分钟 token 数限制
+    enabled: bool = True                # 是否启用速率限制
 
 
 @dataclass
 class UsageStats:
-    """Aggregated usage statistics for a provider instance."""
-    total_calls: int = 0
-    total_prompt_tokens: int = 0
-    total_completion_tokens: int = 0
-    total_tokens: int = 0
-    total_cost_usd: float = 0.0
-    total_latency_ms: float = 0.0
-    errors: int = 0
-    retries: int = 0
+    """提供者实例的累计用量统计"""
+    total_calls: int = 0                # 总调用次数
+    total_prompt_tokens: int = 0        # 总提示词 token 数
+    total_completion_tokens: int = 0    # 总完成 token 数
+    total_tokens: int = 0              # 总 token 数
+    total_cost_usd: float = 0.0        # 总费用（美元）
+    total_latency_ms: float = 0.0      # 总延迟（毫秒）
+    errors: int = 0                    # 错误次数
+    retries: int = 0                   # 重试次数
 
     @property
     def avg_latency_ms(self):
@@ -75,27 +75,27 @@ class UsageStats:
 
 @dataclass
 class LLMResponse:
-    """Unified response object returned by provider internals."""
-    content: str
-    model: str = ""
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-    finish_reason: str = ""
-    latency_ms: float = 0.0
-    raw_response: Any = None
+    """提供者内部返回的统一响应对象"""
+    content: str                # 响应内容
+    model: str = ""             # 模型名称
+    prompt_tokens: int = 0      # 提示词 token 数
+    completion_tokens: int = 0  # 完成 token 数
+    total_tokens: int = 0       # 总 token 数
+    finish_reason: str = ""     # 完成原因
+    latency_ms: float = 0.0    # 延迟（毫秒）
+    raw_response: Any = None    # 原始响应
 
 
 # ============================================================
-# Rate Limiter — Token Bucket Algorithm
+# 速率限制器 — 令牌桶算法
 # ============================================================
 
 class TokenBucketRateLimiter:
     """
-    Thread-safe token bucket rate limiter.
+    线程安全的令牌桶速率限制器。
 
-    Controls both request rate and token throughput to stay within
-    API provider limits.
+    同时控制请求速率和 token 吞吐量，以保持在
+    API 提供者的限制内。
     """
 
     def __init__(self, config=None):
@@ -111,7 +111,7 @@ class TokenBucketRateLimiter:
         self._max_token_tokens = float(config.tokens_per_minute)
 
     def _refill(self):
-        """Refill tokens based on elapsed time."""
+        """根据经过的时间补充令牌"""
         now = time.monotonic()
         elapsed = now - self._last_refill
         request_refill = elapsed * (self._max_request_tokens / 60.0)
@@ -126,7 +126,7 @@ class TokenBucketRateLimiter:
 
     def acquire(self, estimated_tokens=1):
         # type: (int) -> None
-        """Block until the request is allowed under rate limits."""
+        """阻塞直到请求在速率限制内被允许"""
         if not self.config.enabled:
             return
 
@@ -138,30 +138,22 @@ class TokenBucketRateLimiter:
                     self._request_tokens -= 1.0
                     self._token_tokens -= estimated_tokens
                     return
-            # Back off briefly before re-checking
+            # 短暂等待后重新检查
             time.sleep(0.05)
 
 
 # ============================================================
-# Retry Decorator — Exponential Backoff with Jitter
+# 重试装饰器 — 指数退避 + 随机抖动
 # ============================================================
 
 def retry_on_error(func=None, config=None):
     """
-    Decorator that retries LLM API calls on transient failures.
+    对 LLM API 调用进行瞬态故障重试的装饰器。
 
-    Supports:
-    - Exponential backoff with optional jitter
-    - HTTP status-code–based retry decisions
-    - Keyword-based heuristic retry (rate limit, overloaded, etc.)
-
-    Usage::
-
-        @retry_on_error
-        def my_api_call(...): ...
-
-        @retry_on_error(config=RetryConfig(max_retries=5))
-        def my_api_call(...): ...
+    支持：
+    - 指数退避 + 可选随机抖动
+    - 基于 HTTP 状态码的重试决策
+    - 基于关键词的启发式重试（速率限制、过载等）
     """
     if config is None:
         config = RetryConfig()
@@ -176,17 +168,17 @@ def retry_on_error(func=None, config=None):
                 except Exception as e:
                     last_exception = e
 
-                    # Decide if the error is worth retrying
+                    # 判断是否值得重试
                     is_retryable = False
 
-                    # Check HTTP status code (works with openai, anthropic SDKs)
+                    # 检查 HTTP 状态码（适用于 openai、anthropic SDK）
                     status_code = getattr(e, "status_code", None)
                     if status_code is None:
                         status_code = getattr(e, "http_status", None)
                     if status_code and status_code in config.retryable_status_codes:
                         is_retryable = True
 
-                    # Heuristic keyword match
+                    # 启发式关键词匹配
                     error_str = str(e).lower()
                     retryable_keywords = [
                         "rate limit", "rate_limit", "overloaded",
@@ -199,7 +191,7 @@ def retry_on_error(func=None, config=None):
                     if not is_retryable or attempt == config.max_retries:
                         raise
 
-                    # Compute delay
+                    # 计算延迟
                     delay = min(
                         config.base_delay * (config.exponential_base ** attempt),
                         config.max_delay,
@@ -216,7 +208,7 @@ def retry_on_error(func=None, config=None):
                         delay,
                     )
 
-                    # Track retry in usage stats if possible
+                    # 如果可能，在用量统计中记录重试
                     if args and hasattr(args[0], "_usage"):
                         args[0]._usage.retries += 1
 
@@ -232,13 +224,13 @@ def retry_on_error(func=None, config=None):
 
 
 # ============================================================
-# Cost Estimation — Per-Model Pricing Tables
+# 成本估算 — 按模型定价表
 # ============================================================
 
-# Pricing: (input_cost_per_1M_tokens, output_cost_per_1M_tokens) in USD
-# Prices as of early 2025.  Add new models as needed.
+# 定价：(每百万 token 输入成本, 每百万 token 输出成本) 单位美元
+# 价格截至 2025 年初，如有新模型可随时添加
 MODEL_PRICING = {
-    # ---- OpenAI ----
+    # ---- OpenAI 系列 ----
     "gpt-4o": (2.50, 10.00),
     "gpt-4o-mini": (0.15, 0.60),
     "gpt-4o-2024-11-20": (2.50, 10.00),
@@ -253,7 +245,7 @@ MODEL_PRICING = {
     "o1-mini": (3.00, 12.00),
     "o1-preview": (15.00, 60.00),
     "o3-mini": (1.10, 4.40),
-    # ---- Anthropic ----
+    # ---- Anthropic 系列 ----
     "claude-3-5-sonnet-20241022": (3.00, 15.00),
     "claude-3-5-haiku-20241022": (0.80, 4.00),
     "claude-3-opus-20240229": (15.00, 75.00),
@@ -262,20 +254,20 @@ MODEL_PRICING = {
     "claude-3.5-sonnet": (3.00, 15.00),
     "claude-3.5-haiku": (0.80, 4.00),
     "claude-3-opus": (15.00, 75.00),
-    # ---- DeepSeek ----
+    # ---- DeepSeek 系列 ----
     "deepseek-chat": (0.27, 1.10),
     "deepseek-reasoner": (0.55, 2.19),
-    # ---- Local / Free ----
+    # ---- 本地/免费模型 ----
     "mock-model": (0.0, 0.0),
 }
 
 
 def estimate_cost(model_name, prompt_tokens, completion_tokens):
     # type: (str, int, int) -> float
-    """Estimate the USD cost for an API call based on token counts."""
+    """根据 token 数量估算 API 调用的美元成本"""
     pricing = MODEL_PRICING.get(model_name)
     if pricing is None:
-        # Try prefix matching (e.g. "gpt-4o-2024-..." matches "gpt-4o")
+        # 尝试前缀匹配（如 "gpt-4o-2024-..." 匹配 "gpt-4o"）
         for key in sorted(MODEL_PRICING.keys(), key=len, reverse=True):
             if model_name.startswith(key):
                 pricing = MODEL_PRICING[key]
@@ -289,21 +281,20 @@ def estimate_cost(model_name, prompt_tokens, completion_tokens):
 
 
 # ============================================================
-# Token Estimation (heuristic, no tokenizer dependency)
+# Token 估算（启发式，无需分词器依赖）
 # ============================================================
 
 def estimate_tokens(text):
     # type: (str) -> int
     """
-    Rough token count heuristic.
+    粗略的 token 计数启发算法。
 
-    For accurate counts, use ``tiktoken`` (OpenAI) or provider-specific
-    tokenizers.  This approximation is used only when actual token counts
-    are unavailable (e.g., Ollama without usage info).
+    精确计数请使用 tiktoken（OpenAI）或提供者特定的分词器。
+    此近似值仅在实际 token 计数不可用时使用。
     """
     if not text:
         return 0
-    # CJK characters ≈ 1.5 tokens each; ASCII ≈ 0.25 tokens per char
+    # 中文字符 ≈ 1.5 tokens；ASCII 字符 ≈ 0.25 tokens
     cjk = sum(
         1 for c in text
         if "\u4e00" <= c <= "\u9fff" or "\u3000" <= c <= "\u303f"

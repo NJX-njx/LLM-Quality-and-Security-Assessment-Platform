@@ -539,45 +539,38 @@ class DatasetRegistry:
 
 
 # ============================================================
-# Transform Functions for Common Datasets
+# Transform Functions for Common HuggingFace Datasets
 # ============================================================
 
 def mmlu_transform(row):
     # type: (Dict[str, Any]) -> Dict[str, Any]
-    """Transform a HuggingFace MMLU row into StandardQuestion format.
-
-    Expected HF fields: ``question``, ``choices``, ``answer`` (int 0‑3).
-    """
+    """Transform a HuggingFace MMLU row into StandardQuestion format."""
     answer_idx = row.get("answer", 0)
-    if isinstance(answer_idx, int):
-        answer_letter = chr(65 + answer_idx)
-    else:
-        answer_letter = str(answer_idx)
+    answer_letter = chr(65 + answer_idx) if isinstance(answer_idx, int) else str(answer_idx)
     return {
         "question": row.get("question", ""),
         "choices": row.get("choices", []),
         "correct_answer": answer_letter,
         "subject": row.get("subject", "general"),
+        "category": "knowledge",
         "evaluation_type": "exact_match",
     }
 
 
 def gsm8k_transform(row):
     # type: (Dict[str, Any]) -> Dict[str, Any]
-    """Transform a HuggingFace GSM8K row into StandardQuestion format.
-
-    Expected HF fields: ``question``, ``answer`` (contains ``####`` final answer).
-    """
+    """Transform a HuggingFace GSM8K row into StandardQuestion format."""
     raw_answer = row.get("answer", "")
-    # GSM8K answers end with "#### <number>"
     final_answer = raw_answer
     if "####" in raw_answer:
         final_answer = raw_answer.split("####")[-1].strip()
     return {
         "question": row.get("question", ""),
         "correct_answer": final_answer,
+        "category": "reasoning",
+        "subcategory": "math",
         "evaluation_type": "numeric_match",
-        "metadata": {"full_solution": raw_answer},
+        "explanation": raw_answer,
     }
 
 
@@ -587,6 +580,7 @@ def truthfulqa_transform(row):
     return {
         "question": row.get("question", ""),
         "correct_answer": row.get("best_answer", ""),
+        "category": "factuality",
         "evaluation_type": "llm_judge",
         "metadata": {
             "correct_answers": row.get("correct_answers", []),
@@ -594,6 +588,376 @@ def truthfulqa_transform(row):
             "category": row.get("category", ""),
         },
     }
+
+
+def humaneval_transform(row):
+    # type: (Dict[str, Any]) -> Dict[str, Any]
+    """Transform a HuggingFace HumanEval row into StandardQuestion format."""
+    return {
+        "question_id": row.get("task_id", ""),
+        "question": row.get("prompt", ""),
+        "correct_answer": row.get("canonical_solution", ""),
+        "category": "coding",
+        "subcategory": "python",
+        "evaluation_type": "code_exec",
+        "metadata": {
+            "test": row.get("test", ""),
+            "entry_point": row.get("entry_point", ""),
+        },
+    }
+
+
+def cmmlu_transform(row):
+    # type: (Dict[str, Any]) -> Dict[str, Any]
+    """Transform a HuggingFace CMMLU row into StandardQuestion format."""
+    choices = [row.get(c, "") for c in ["A", "B", "C", "D"]]
+    return {
+        "question": row.get("Question", ""),
+        "choices": choices,
+        "correct_answer": str(row.get("Answer", "")),
+        "subject": row.get("Subject", ""),
+        "category": "knowledge",
+        "subcategory": "chinese",
+        "evaluation_type": "exact_match",
+    }
+
+
+# ============================================================
+# Benchmark Configuration Registry
+# ============================================================
+
+_BENCHMARK_CONFIGS = {
+    "mmlu": {
+        "hf_id": "cais/mmlu",
+        "hf_subset": "all",
+        "hf_split": "test",
+        "transform": mmlu_transform,
+        "builtin_file": "mmlu_sample.jsonl",
+        "source_name": "mmlu",
+    },
+    "gsm8k": {
+        "hf_id": "openai/gsm8k",
+        "hf_subset": "main",
+        "hf_split": "test",
+        "transform": gsm8k_transform,
+        "builtin_file": "gsm8k_sample.jsonl",
+        "source_name": "gsm8k",
+    },
+    "truthfulqa": {
+        "hf_id": "truthfulqa/truthful_qa",
+        "hf_subset": "generation",
+        "hf_split": "validation",
+        "transform": truthfulqa_transform,
+        "builtin_file": "truthfulqa_sample.jsonl",
+        "source_name": "truthfulqa",
+    },
+    "humaneval": {
+        "hf_id": "openai/openai_humaneval",
+        "hf_subset": None,
+        "hf_split": "test",
+        "transform": humaneval_transform,
+        "builtin_file": "humaneval_sample.jsonl",
+        "source_name": "humaneval",
+    },
+    "cmmlu": {
+        "hf_id": "haonan-li/cmmlu",
+        "hf_subset": "all",
+        "hf_split": "test",
+        "transform": cmmlu_transform,
+        "builtin_file": "cmmlu_sample.jsonl",
+        "source_name": "cmmlu",
+    },
+}
+
+_ATTACK_FILES = {
+    "jailbreak": "jailbreak_prompts.jsonl",
+    "injection": "injection_prompts.jsonl",
+    "leakage": "leakage_prompts.jsonl",
+    "encoding": "encoding_payloads.jsonl",
+    "multi_turn": "multi_turn_attacks.jsonl",
+}
+
+_ALIGNMENT_FILES = {
+    "hhh": "hhh_scenarios.jsonl",
+    "refusal": "refusal_calibration.jsonl",
+    "bias": "bias_scenarios.jsonl",
+}
+
+
+# ============================================================
+# DatasetLoader — High-Level Entry Point
+# ============================================================
+
+class DatasetLoader:
+    """High-level orchestrator for loading datasets across all modules.
+
+    Features:
+    - Automatic HuggingFace → built-in fallback
+    - Unified API for benchmarks, attacks, and alignment data
+    - In-memory caching
+    - Filtering, sampling, and shuffling
+
+    Usage::
+
+        loader = DatasetLoader()
+        questions = loader.load_benchmark("mmlu", max_samples=50)
+        attacks   = loader.load_attacks("jailbreak", severity="high")
+        scenarios = loader.load_alignment("refusal")
+    """
+
+    def __init__(self, prefer_hf=True, cache_dir=None):
+        # type: (bool, Optional[str]) -> None
+        """
+        Args:
+            prefer_hf: Try HuggingFace datasets before built-in fallback.
+            cache_dir: Cache directory for HuggingFace downloads.
+        """
+        self._prefer_hf = prefer_hf
+        self._cache_dir = cache_dir
+        self._pkg_loader = PackageDataLoader()
+
+        # Allow runtime registration of extra datasets
+        self._extra_benchmark_configs = {}     # type: Dict[str, Dict]
+        self._extra_attack_files = {}          # type: Dict[str, str]
+        self._extra_alignment_files = {}       # type: Dict[str, str]
+
+    # -- Registration -------------------------------------------------------
+
+    def register_benchmark(self, name, config):
+        # type: (str, Dict[str, Any]) -> None
+        """Register a custom benchmark config at runtime."""
+        self._extra_benchmark_configs[name] = config
+
+    def register_attack_file(self, category, filename):
+        # type: (str, str) -> None
+        """Register a custom attack file at runtime."""
+        self._extra_attack_files[category] = filename
+
+    def register_alignment_file(self, category, filename):
+        # type: (str, str) -> None
+        """Register a custom alignment file at runtime."""
+        self._extra_alignment_files[category] = filename
+
+    # -- Discovery ----------------------------------------------------------
+
+    def available_benchmarks(self):
+        # type: () -> List[str]
+        keys = set(_BENCHMARK_CONFIGS.keys())
+        keys.update(self._extra_benchmark_configs.keys())
+        return sorted(keys)
+
+    def available_attack_categories(self):
+        # type: () -> List[str]
+        keys = set(_ATTACK_FILES.keys())
+        keys.update(self._extra_attack_files.keys())
+        return sorted(keys)
+
+    def available_alignment_categories(self):
+        # type: () -> List[str]
+        keys = set(_ALIGNMENT_FILES.keys())
+        keys.update(self._extra_alignment_files.keys())
+        return sorted(keys)
+
+    def dataset_info(self, name):
+        # type: (str) -> Dict[str, Any]
+        """Get metadata about a benchmark dataset."""
+        cfg = self._get_benchmark_config(name)
+        return {
+            "name": name,
+            "hf_dataset_id": cfg.get("hf_id", ""),
+            "hf_subset": cfg.get("hf_subset", ""),
+            "hf_split": cfg.get("hf_split", ""),
+            "builtin_file": cfg.get("builtin_file", ""),
+            "has_builtin_fallback": bool(cfg.get("builtin_file")),
+        }
+
+    # -- Benchmark Loading --------------------------------------------------
+
+    def load_benchmark(self, name, max_samples=None, shuffle=False,
+                       seed=42, force_builtin=False):
+        # type: (str, Optional[int], bool, int, bool) -> List[StandardQuestion]
+        """Load benchmark questions by name.
+
+        Tries HuggingFace first, then falls back to built-in sample data.
+        """
+        cfg = self._get_benchmark_config(name)
+
+        # Try HuggingFace
+        if self._prefer_hf and not force_builtin and cfg.get("hf_id"):
+            try:
+                questions = self._load_hf_benchmark(cfg, max_samples)
+                logger.info(
+                    "Loaded %d questions for '%s' from HuggingFace",
+                    len(questions), name,
+                )
+                if shuffle:
+                    rng = random.Random(seed)
+                    rng.shuffle(questions)
+                return questions
+            except Exception as exc:
+                logger.warning(
+                    "HuggingFace load failed for '%s' (%s); "
+                    "falling back to built-in data.", name, exc,
+                )
+
+        # Fallback to built-in
+        builtin_file = cfg.get("builtin_file", "")
+        if builtin_file:
+            questions = self._pkg_loader.load_questions(
+                builtin_file, max_items=max_samples,
+                shuffle=shuffle, seed=seed,
+            )
+            logger.info(
+                "Loaded %d questions for '%s' from built-in data",
+                len(questions), name,
+            )
+            return questions
+
+        raise RuntimeError(
+            "No data source available for benchmark '%s'. "
+            "Install `datasets` or check built-in data files." % name
+        )
+
+    def _get_benchmark_config(self, name):
+        # type: (str) -> Dict[str, Any]
+        cfg = self._extra_benchmark_configs.get(name)
+        if cfg is not None:
+            return cfg
+        cfg = _BENCHMARK_CONFIGS.get(name)
+        if cfg is not None:
+            return cfg
+        available = ", ".join(self.available_benchmarks())
+        raise KeyError(
+            "Unknown benchmark: '%s'. Available: %s" % (name, available)
+        )
+
+    def _load_hf_benchmark(self, cfg, max_samples):
+        # type: (Dict[str, Any], Optional[int]) -> List[StandardQuestion]
+        loader = HuggingFaceDatasetLoader(
+            dataset_id=cfg["hf_id"],
+            split=cfg.get("hf_split", "test"),
+            config_name=cfg.get("hf_subset"),
+            transform_fn=cfg.get("transform"),
+            source_name=cfg.get("source_name", cfg["hf_id"]),
+        )
+        return loader.load(max_items=max_samples)
+
+    # -- Attack Loading -----------------------------------------------------
+
+    def load_attacks(self, category="all", severity=None,
+                     max_samples=None, shuffle=False, seed=42):
+        # type: (str, Optional[str], Optional[int], bool, int) -> List[AttackPrompt]
+        """Load attack prompts by category.
+
+        Args:
+            category: Attack category or ``"all"`` for everything.
+            severity: Filter by severity (low/medium/high/critical).
+            max_samples: Maximum items to return.
+            shuffle: Shuffle results.
+            seed: Random seed.
+        """
+        if category == "all":
+            attacks = []  # type: List[AttackPrompt]
+            for cat in self.available_attack_categories():
+                attacks.extend(self._load_attack_category(cat))
+        else:
+            attacks = self._load_attack_category(category)
+
+        if severity:
+            attacks = [a for a in attacks if a.severity == severity]
+        if shuffle:
+            rng = random.Random(seed)
+            attacks = list(attacks)
+            rng.shuffle(attacks)
+        if max_samples is not None and max_samples > 0:
+            attacks = attacks[:max_samples]
+        return attacks
+
+    def _load_attack_category(self, category):
+        # type: (str) -> List[AttackPrompt]
+        filename = self._extra_attack_files.get(
+            category, _ATTACK_FILES.get(category)
+        )
+        if filename is None:
+            available = ", ".join(self.available_attack_categories())
+            raise KeyError(
+                "Unknown attack category: '%s'. Available: %s"
+                % (category, available)
+            )
+        return self._pkg_loader.load_attacks(filename)
+
+    # -- Alignment Loading --------------------------------------------------
+
+    def load_alignment(self, category="all", max_samples=None,
+                       shuffle=False, seed=42):
+        # type: (str, Optional[int], bool, int) -> List[AlignmentScenario]
+        """Load alignment test scenarios by category."""
+        if category == "all":
+            scenarios = []  # type: List[AlignmentScenario]
+            for cat in self.available_alignment_categories():
+                scenarios.extend(self._load_alignment_category(cat))
+        else:
+            scenarios = self._load_alignment_category(category)
+
+        if shuffle:
+            rng = random.Random(seed)
+            scenarios = list(scenarios)
+            rng.shuffle(scenarios)
+        if max_samples is not None and max_samples > 0:
+            scenarios = scenarios[:max_samples]
+        return scenarios
+
+    def _load_alignment_category(self, category):
+        # type: (str) -> List[AlignmentScenario]
+        filename = self._extra_alignment_files.get(
+            category, _ALIGNMENT_FILES.get(category)
+        )
+        if filename is None:
+            available = ", ".join(self.available_alignment_categories())
+            raise KeyError(
+                "Unknown alignment category: '%s'. Available: %s"
+                % (category, available)
+            )
+        return self._pkg_loader.load_scenarios(filename)
+
+    # -- Hallucination Loading ----------------------------------------------
+
+    def load_hallucination_prompts(self, max_samples=None, shuffle=False,
+                                   seed=42):
+        # type: (Optional[int], bool, int) -> List[AlignmentScenario]
+        """Load hallucination detection prompts."""
+        return self._pkg_loader.load_hallucination_prompts(
+            max_items=max_samples, shuffle=shuffle, seed=seed,
+        )
+
+    # -- User-Supplied Local Files ------------------------------------------
+
+    def load_local_questions(self, filepath, max_samples=None):
+        # type: (str, Optional[int]) -> List[StandardQuestion]
+        """Load questions from a user-provided JSONL file."""
+        raw = load_jsonl(filepath)
+        questions = [StandardQuestion.from_dict(r) for r in raw]
+        if max_samples:
+            questions = questions[:max_samples]
+        return questions
+
+    def load_local_attacks(self, filepath, max_samples=None):
+        # type: (str, Optional[int]) -> List[AttackPrompt]
+        """Load attack prompts from a user-provided JSONL file."""
+        raw = load_jsonl(filepath)
+        attacks = [AttackPrompt.from_dict(r) for r in raw]
+        if max_samples:
+            attacks = attacks[:max_samples]
+        return attacks
+
+    def load_local_scenarios(self, filepath, max_samples=None):
+        # type: (str, Optional[int]) -> List[AlignmentScenario]
+        """Load alignment scenarios from a user-provided JSONL file."""
+        raw = load_jsonl(filepath)
+        scenarios = [AlignmentScenario.from_dict(r) for r in raw]
+        if max_samples:
+            scenarios = scenarios[:max_samples]
+        return scenarios
 
 
 # ============================================================
@@ -604,13 +968,15 @@ def create_hf_loader(dataset_id, split="test", config_name=None, transform_fn=No
     # type: (str, str, Optional[str], Optional[Callable]) -> HuggingFaceDatasetLoader
     """Shortcut to create a :class:`HuggingFaceDatasetLoader`.
 
-    If no ``transform_fn`` is given, the function tries to detect one
-    from a built‑in registry of known datasets.
+    If no ``transform_fn`` is given, tries to auto-detect from built-in
+    transforms for known datasets.
     """
     _auto_transforms = {
         "cais/mmlu": mmlu_transform,
         "openai/gsm8k": gsm8k_transform,
         "truthfulqa/truthful_qa": truthfulqa_transform,
+        "openai/openai_humaneval": humaneval_transform,
+        "haonan-li/cmmlu": cmmlu_transform,
     }
     if transform_fn is None:
         transform_fn = _auto_transforms.get(dataset_id)

@@ -1,0 +1,43 @@
+# ============================================================
+# LLM Assessment Platform — Full Assessment Configuration
+# ============================================================
+# Runs ALL tests with no question limits, enables hybrid
+# evaluation (rule + LLM-as-Judge), and auto-attack generation.
+
+assessment_name: full-assessment
+tags:
+  - production
+  - full
+
+benchmark:
+  enabled: true
+  max_questions: null          # run every question
+
+red_team:
+  enabled: true
+  auto_attack_enabled: true    # enable LLM-driven attack generation
+
+alignment:
+  enabled: true
+
+evaluation:
+  default_method: hybrid       # combine rule-based + LLM-as-Judge
+  fallback_to_rule: true
+  cache_evaluations: true
+
+scoring:
+  benchmark_weight: 0.4
+  security_weight: 0.3
+  alignment_weight: 0.3
+
+report:
+  formats:
+    - html
+    - json
+  include_details: true
+  include_recommendations: true
+
+execution:
+  continue_on_error: true
+  show_progress: true
+  verbose: true

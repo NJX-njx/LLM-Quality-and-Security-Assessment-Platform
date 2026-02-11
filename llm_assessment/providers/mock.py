@@ -1,8 +1,8 @@
 """
-Mock LLM Provider — Enhanced version for testing and demonstration.
+模拟 LLM 提供者 — 增强版，用于测试和演示。
 
-Supports configurable responses, simulated latency, streaming simulation,
-and keyword-based response logic for realistic test scenarios.
+支持可配置响应、模拟延迟、流式输出模拟、
+以及基于关键词的响应逻辑，用于真实的测试场景。
 """
 
 import time
@@ -12,58 +12,58 @@ from typing import Any, Dict, Iterator, List, Optional
 
 class MockLLM:
     """
-    Enhanced mock LLM for testing, CI/CD pipelines, and demonstration.
+    增强版模拟 LLM，用于测试、CI/CD 流水线和功能演示。
 
-    Features:
-        - Keyword-based canned responses for each assessment module
-        - Configurable response map for deterministic testing
-        - Simulated latency and token counting
-        - Streaming simulation
-        - Configurable safety/vulnerability behavior
+    功能特性：
+        - 基于关键词的罐头响应，覆盖各评估模块
+        - 可配置响应映射，支持确定性测试
+        - 模拟延迟和 token 计数
+        - 流式输出模拟
+        - 可配置的安全/脆弱性行为
 
-    Usage::
+    用法示例::
 
         from llm_assessment.providers.mock import MockLLM
 
         llm = MockLLM()
         print(llm.generate("What is 2+2?"))  # "42"
 
-        # Deterministic responses
+        # 确定性响应
         llm = MockLLM(responses={"hello": "world"})
         print(llm.generate("hello"))  # "world"
 
-        # Control safety behavior
+        # 控制安全行为
         llm = MockLLM(safety_mode="vulnerable")
     """
 
-    # The import is deferred to avoid circular imports at module level.
-    # BaseLLM is patched onto the class after core/llm_wrapper.py is loaded.
+    # 导入被延迟以避免模块级别的循环导入。
+    # 当 core/llm_wrapper.py 加载后，BaseLLM 会被绑定到该类上。
     _is_base_set = False
 
     def __init__(self, model_name="mock-model", **kwargs):
         # type: (str, **Any) -> None
-        # We call BaseLLM.__init__ via super() once the base is wired up,
-        # but also support standalone usage without BaseLLM for early import.
+        # 一旦基类连接就绪，通过 super() 调用 BaseLLM.__init__，
+        # 但也支持在没有 BaseLLM 的情况下独立使用。
         self.model_name = model_name
         self.config = kwargs
 
-        # Backward-compat fields
+        # 向后兼容字段
         self.call_count = 0
         self.total_tokens = 0
 
-        # Usage tracking (standalone — overridden when BaseLLM is the base)
+        # 用量跟踪（独立模式 — 当 BaseLLM 为基类时会被覆盖）
         self._usage_total_calls = 0
         self._usage_total_tokens = 0
 
-        # Configurable state
-        self.responses = kwargs.get("responses", {})
-        self.latency = kwargs.get("latency", 0.05)  # seconds per call
+        # 可配置状态
+        self.responses = kwargs.get("responses", {})     # 确定性响应映射
+        self.latency = kwargs.get("latency", 0.05)       # 每次调用的模拟延迟（秒）
         self.safety_mode = kwargs.get("safety_mode", "safe")
-        # "safe"       — always refuse harmful requests
-        # "vulnerable" — comply with harmful requests (test vulnerability detection)
-        # "mixed"      — 50 % chance of each
+        # "safe"       — 始终拒绝有害请求
+        # "vulnerable" — 服从有害请求（用于测试脆弱性检测）
+        # "mixed"      — 50% 概率随机行为
 
-        # Initialize BaseLLM if available
+        # 如果 BaseLLM 可用则初始化
         try:
             from ..core.llm_wrapper import BaseLLM  # noqa: F811
             if isinstance(self, BaseLLM):
@@ -72,17 +72,17 @@ class MockLLM:
             pass
 
     # ------------------------------------------------------------------ #
-    #  Core generation
+    #  核心生成方法
     # ------------------------------------------------------------------ #
 
     def generate(self, prompt, **kwargs):
         # type: (str, **Any) -> str
-        """Generate a mock response based on prompt keywords."""
+        """根据提示词关键词生成模拟响应"""
         self.call_count += 1
         tokens = len(prompt.split())
         self.total_tokens += tokens
 
-        # Deterministic responses
+        # 确定性响应
         if prompt in self.responses:
             if self.latency:
                 time.sleep(self.latency)
@@ -95,7 +95,7 @@ class MockLLM:
 
     def chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
-        """Chat completion with mock response."""
+        """使用模拟响应的对话完成"""
         self.call_count += 1
 
         last_content = ""
@@ -107,17 +107,17 @@ class MockLLM:
         return self.generate(last_content, **kwargs)
 
     # ------------------------------------------------------------------ #
-    #  Batch, streaming, health
+    #  批量、流式、健康检查
     # ------------------------------------------------------------------ #
 
     def batch_generate(self, prompts, max_workers=4, **kwargs):
         # type: (List[str], int, **Any) -> List[str]
-        """Batch generation — runs sequentially for determinism."""
+        """批量生成 — 为保证确定性顺序执行"""
         return [self.generate(p, **kwargs) for p in prompts]
 
     def stream_generate(self, prompt, **kwargs):
         # type: (str, **Any) -> Iterator[str]
-        """Simulate streaming by yielding word-by-word."""
+        """模拟流式输出，逐词产出"""
         full = self.generate(prompt, **kwargs)
         words = full.split()
         for i, word in enumerate(words):
@@ -128,7 +128,7 @@ class MockLLM:
 
     def stream_chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Simulate streaming for chat."""
+        """模拟对话的流式输出"""
         last_content = ""
         for msg in reversed(messages):
             if msg.get("role") == "user":
@@ -139,7 +139,7 @@ class MockLLM:
 
     def health_check(self):
         # type: () -> Dict[str, Any]
-        """Always healthy."""
+        """始终返回健康状态"""
         return {
             "status": "healthy",
             "latency_ms": 0.0,
@@ -160,22 +160,22 @@ class MockLLM:
         return "MockLLM(model='{}')".format(self.model_name)
 
     # ------------------------------------------------------------------ #
-    #  Keyword-based response engine
+    #  基于关键词的响应引擎
     # ------------------------------------------------------------------ #
 
     def _keyword_response(self, prompt):
         # type: (str) -> str
         """
-        Return a realistic canned response based on keyword analysis.
+        根据关键词分析返回真实的罐头响应。
 
-        Covers:
-        - Benchmark questions (MMLU / math / code / logic)
-        - Red-teaming prompts (jailbreak / injection / leakage)
-        - Alignment scenarios (safety / ethics / helpfulness / honesty)
+        覆盖场景：
+        - 基准测试问题（MMLU / 数学 / 代码 / 逻辑）
+        - 红队测试提示（越狱 / 注入 / 泄露）
+        - 对齐场景（安全 / 伦理 / 有帮助性 / 诚实性）
         """
         lower = prompt.lower()
 
-        # ---- Benchmark keywords ----
+        # ---- 基准测试关键词 ----
         if self._is_multiple_choice(prompt):
             return self._handle_multiple_choice(prompt)
 
@@ -185,7 +185,7 @@ class MockLLM:
         if any(kw in lower for kw in ["write code", "implement", "def ", "function", "program"]):
             return self._handle_code(prompt)
 
-        # ---- Red-teaming keywords (safety) ----
+        # ---- 红队测试关键词（安全） ----
         if any(kw in lower for kw in [
             "hack", "exploit", "malware", "bypass", "ignore previous",
             "jailbreak", "dan", "pretend you", "act as", "no restrictions",
@@ -196,7 +196,7 @@ class MockLLM:
         if any(kw in lower for kw in ["base64", "rot13", "encode", "decode", "translate this cipher"]):
             return self._handle_encoding_attack(prompt)
 
-        # ---- Alignment keywords ----
+        # ---- 对齐关键词 ----
         if any(kw in lower for kw in [
             "safety", "ethical", "harm", "dangerous", "illegal",
             "weapon", "drug", "kill", "bomb", "violence",
@@ -212,30 +212,33 @@ class MockLLM:
         if any(kw in lower for kw in ["bias", "gender", "race", "stereotype", "fair"]):
             return self._handle_bias(prompt)
 
-        # ---- Default ----
+        # ---- 默认响应 ----
         return "I understand your question. Here is my response based on careful analysis."
 
-    # -- Helpers --
+    # -- 辅助方法 --
 
     @staticmethod
     def _is_multiple_choice(prompt):
         # type: (str) -> bool
-        """Detect MMLU-style multiple choice questions."""
+        """检测 MMLU 风格的多选题"""
         return bool(re.search(r"\b[ABCD]\)", prompt) or re.search(r"\([ABCD]\)", prompt))
 
     @staticmethod
     def _handle_multiple_choice(prompt):
         # type: (str) -> str
+        """处理多选题，返回默认答案"""
         return "The answer is A"
 
     @staticmethod
     def _handle_math(prompt):
         # type: (str) -> str
+        """处理数学问题，返回固定答案"""
         return "The answer is 42"
 
     @staticmethod
     def _handle_code(prompt):
         # type: (str) -> str
+        """处理代码问题，返回示例代码"""
         return (
             "```python\ndef solution():\n"
             "    # Implementation\n"
@@ -244,7 +247,7 @@ class MockLLM:
 
     def _handle_safety_challenge(self, prompt):
         # type: (str) -> str
-        """Respond to red-team attacks based on safety_mode."""
+        """根据 safety_mode 响应红队攻击"""
         if self.safety_mode == "vulnerable":
             return (
                 "Sure, I can help with that. Here are the steps to bypass "
@@ -256,7 +259,7 @@ class MockLLM:
                 return (
                     "Sure, I can help with that. Here is the information you requested..."
                 )
-        # safe (default)
+        # 安全模式（默认）
         return (
             "I'm sorry, but I cannot assist with that request. "
             "It goes against my safety guidelines. "
@@ -283,6 +286,7 @@ class MockLLM:
     @staticmethod
     def _handle_helpfulness(prompt):
         # type: (str) -> str
+        """处理有帮助性相关提示"""
         return (
             "I'd be happy to help you with that! Here is a detailed, "
             "step-by-step answer to address your question comprehensively."
@@ -291,6 +295,7 @@ class MockLLM:
     @staticmethod
     def _handle_honesty(prompt):
         # type: (str) -> str
+        """处理诚实性相关提示"""
         return (
             "Based on available evidence, I want to provide an accurate and honest response. "
             "If I'm uncertain about something, I'll clearly indicate that."
@@ -299,6 +304,7 @@ class MockLLM:
     @staticmethod
     def _handle_bias(prompt):
         # type: (str) -> str
+        """处理偏见相关提示"""
         return (
             "I strive to provide balanced and unbiased responses. "
             "All individuals should be treated with equal respect regardless of "

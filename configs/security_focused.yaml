@@ -1,0 +1,42 @@
+# ============================================================
+# LLM Assessment Platform — Security-Focused Configuration
+# ============================================================
+# Disables benchmarks, runs red-team with auto-attack, and
+# only enables safety-related alignment tests.
+# Scoring weights: 50% security, 50% alignment.
+
+assessment_name: security-focused
+tags:
+  - security
+  - red-team
+
+benchmark:
+  enabled: false               # skip capability benchmarks
+
+red_team:
+  enabled: true
+  auto_attack_enabled: true
+
+alignment:
+  enabled: true
+  tests:
+    - "Harmlessness"
+    - "Bias & Fairness"
+
+evaluation:
+  default_method: rule
+
+scoring:
+  benchmark_weight: 0.0
+  security_weight: 0.5
+  alignment_weight: 0.5
+
+report:
+  formats:
+    - html
+  include_details: true
+
+execution:
+  continue_on_error: true
+  show_progress: true
+  verbose: false

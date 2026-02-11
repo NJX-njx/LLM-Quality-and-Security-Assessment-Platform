@@ -1,0 +1,37 @@
+# ============================================================
+# LLM Assessment Platform — Quick Test Configuration
+# ============================================================
+# Designed for rapid smoke-testing during development.
+# Limits questions and attacks, disables verbose output.
+
+assessment_name: quick-test
+tags:
+  - dev
+  - smoke-test
+
+benchmark:
+  enabled: true
+  max_questions: 3
+
+red_team:
+  enabled: true
+  max_attacks_per_test: 3
+
+alignment:
+  enabled: true
+
+evaluation:
+  default_method: rule
+
+scoring:
+  benchmark_weight: 0.4
+  security_weight: 0.3
+  alignment_weight: 0.3
+
+report:
+  include_details: false
+
+execution:
+  continue_on_error: true
+  show_progress: true
+  verbose: false
