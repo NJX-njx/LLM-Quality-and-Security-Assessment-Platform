@@ -1,7 +1,5 @@
 # LLM Quality & Security Assessment Platform
 
-**一键体检报告** - 统一的 LLM 质量与安全评估平台
-
 Build a unified LLM quality and safety assessment platform that integrates capability benchmarking, security red teaming, and alignment checking into a single framework, providing a "one-click health check report".
 
 ## ✨ Features
