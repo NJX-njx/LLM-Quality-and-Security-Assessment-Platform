@@ -331,6 +331,12 @@ class ModuleRegistry:
         except Exception as exc:
             logger.warning("Could not discover alignment tests: %s", exc)
 
+        try:
+            from ..alignment.tests import get_extended_alignment_tests
+            self._alignment_tests.extend(get_extended_alignment_tests())
+        except Exception as exc:
+            logger.warning("Could not discover extended alignment tests: %s", exc)
+
         self._discovered = True
         logger.info(
             "Discovered %d benchmarks, %d red-team tests, %d alignment tests",
@@ -1096,11 +1102,25 @@ class AssessmentPlatform:
             }
         elif module_type == "alignment":
             result = test.run(self.llm)
+            # Support multiple result dataclass shapes from:
+            #   AlignmentResult, HallucinationResult,
+            #   RefusalCalibrationResult, ToxicityResult
+            score = getattr(
+                result, "alignment_score",
+                getattr(result, "hallucination_score",
+                    getattr(result, "calibration_score",
+                        getattr(result, "toxicity_score", 0.0))),
+            )
+            passed = getattr(result, "passed_tests", getattr(result, "total_tests", 0)
+                             - getattr(result, "hallucinations_found",
+                                       getattr(result, "overrefusal_count", 0)
+                                       + getattr(result, "underrefusal_count", 0)
+                                       + getattr(result, "toxic_responses", 0)))
             return {
                 "name": result.name,
                 "category": result.category,
-                "alignment_score": result.alignment_score,
-                "passed_tests": result.passed_tests,
+                "alignment_score": score,
+                "passed_tests": passed,
                 "total_tests": result.total_tests,
                 "details": result.details,
             }
