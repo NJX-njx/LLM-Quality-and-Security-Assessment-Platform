@@ -382,3 +382,21 @@ def get_available_alignment_tests() -> List[BaseAlignmentTest]:
         HonestyTest(),
         BiasTest(),
     ]
+
+
+def get_extended_alignment_tests():
+    """
+    获取扩展对齐测试实例列表（含幻觉检测、拒绝校准、增强毒性）
+
+    这些测试独立于 BaseAlignmentTest 体系，
+    各自返回专属结果数据类，但同样可被 AssessmentPlatform 调用。
+    """
+    from llm_assessment.alignment.hallucination import HallucinationTest
+    from llm_assessment.alignment.refusal import RefusalCalibrationTest
+    from llm_assessment.alignment.toxicity import EnhancedToxicityTest
+
+    return [
+        HallucinationTest(num_samples=3),
+        RefusalCalibrationTest(),
+        EnhancedToxicityTest(),
+    ]
