@@ -1,18 +1,18 @@
 """
-HuggingFace LLM Providers — Inference API and local transformers.
+HuggingFace LLM 提供者 — 推理 API 和本地 transformers。
 
-Two operating modes:
-    1. **HuggingFaceLLM** — Serverless Inference API (no GPU required locally)
-    2. **HuggingFaceLocalLLM** — Local inference via ``transformers`` + ``torch``
+两种运行模式：
+    1. **HuggingFaceLLM** — 无服务器推理 API（本地无需 GPU）
+    2. **HuggingFaceLocalLLM** — 通过 ``transformers`` + ``torch`` 本地推理
 
-Features:
-    - Supports any text-generation model on the HuggingFace Hub
-    - Streaming support (API mode)
-    - Configurable generation parameters
-    - Cost tracking for Inference API (PRO endpoints)
+功能特性：
+    - 支持 HuggingFace Hub 上的任何文本生成模型
+    - 流式输出支持（API 模式）
+    - 可配置生成参数
+    - 推理 API 成本跟踪（PRO 端点）
 
-Reference:
-    - Inference API: https://huggingface.co/docs/api-inference/
+参考：
+    - 推理 API: https://huggingface.co/docs/api-inference/
     - huggingface_hub: https://huggingface.co/docs/huggingface_hub/
     - transformers: https://huggingface.co/docs/transformers/
 """
@@ -35,31 +35,20 @@ logger = logging.getLogger(__name__)
 
 class HuggingFaceLLM:
     """
-    HuggingFace Inference API provider (serverless).
+    HuggingFace 推理 API 提供者（无服务器模式）。
 
-    Uses ``huggingface_hub.InferenceClient`` to call models hosted on
-    HuggingFace's infrastructure.  Supports free-tier models and
-    dedicated / PRO inference endpoints.
+    使用 ``huggingface_hub.InferenceClient`` 调用托管在
+    HuggingFace 基础设施上的模型。支持免费层模型和
+    专用 / PRO 推理端点。
 
-    Args:
-        model_name: HuggingFace model ID or Inference Endpoint URL
-            (default: ``"meta-llama/Llama-3.2-3B-Instruct"``).
-        api_key: HuggingFace API token.  Falls back to ``HF_TOKEN`` env var.
-        timeout: Request timeout in seconds (default: 120).
-        temperature: Default temperature (default: 0.7).
-        max_tokens: Default max new tokens (default: 1024).
-        rate_limit: ``RateLimitConfig`` or dict.
-        **kwargs: Additional params passed to the inference client.
-
-    Example::
-
-        from llm_assessment.providers.huggingface import HuggingFaceLLM
-
-        llm = HuggingFaceLLM(
-            model_name="meta-llama/Llama-3.2-3B-Instruct",
-            api_key="hf_...",
-        )
-        print(llm.generate("Explain gravity."))
+    参数：
+        model_name: HuggingFace 模型 ID 或推理端点 URL。
+        api_key: HuggingFace API token。回退到 ``HF_TOKEN`` 环境变量。
+        timeout: 请求超时（秒，默认: 120）。
+        temperature: 默认温度（默认: 0.7）。
+        max_tokens: 默认最大新 token 数（默认: 1024）。
+        rate_limit: ``RateLimitConfig`` 或字典。
+        **kwargs: 传递给推理客户端的其他参数。
     """
 
     def __init__(self, model_name="meta-llama/Llama-3.2-3B-Instruct", **kwargs):
@@ -67,7 +56,7 @@ class HuggingFaceLLM:
         self.model_name = model_name
         self.config = kwargs
 
-        # Backward-compat
+        # 向后兼容字段
         self.call_count = 0
         self.total_tokens = 0
 
@@ -77,7 +66,7 @@ class HuggingFaceLLM:
         self._max_tokens = kwargs.pop("max_tokens", 1024)
         self._timeout = kwargs.pop("timeout", 120)
 
-        # Retry
+        # 重试配置
         self._retry_config = RetryConfig(
             max_retries=kwargs.pop("max_retries", 3)
         )
@@ -88,7 +77,7 @@ class HuggingFaceLLM:
             rl_cfg = RateLimitConfig(**rl_cfg)
         self._rate_limiter = TokenBucketRateLimiter(rl_cfg)
 
-        # ---- Create InferenceClient ----
+        # ---- 创建 InferenceClient ----
         try:
             from huggingface_hub import InferenceClient
         except ImportError:
@@ -117,13 +106,13 @@ class HuggingFaceLLM:
             pass
 
     # ------------------------------------------------------------------ #
-    #  Core generation
+    #  核心生成方法
     # ------------------------------------------------------------------ #
 
     @retry_on_error
     def generate(self, prompt, **kwargs):
         # type: (str, **Any) -> str
-        """Generate using the text-generation API."""
+        """使用文本生成 API 生成响应"""
         self._rate_limiter.acquire(estimate_tokens(prompt))
 
         gen_kwargs = self._build_gen_kwargs(kwargs)
@@ -135,7 +124,7 @@ class HuggingFaceLLM:
         )
         latency_ms = (time.time() - start) * 1000
 
-        # text_generation returns the generated text directly
+        # text_generation 直接返回生成的文本
         content = response if isinstance(response, str) else str(response)
 
         prompt_tokens = estimate_tokens(prompt)
@@ -147,7 +136,7 @@ class HuggingFaceLLM:
     @retry_on_error
     def chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
-        """Chat completion using chat_completion API."""
+        """使用 chat_completion API 进行对话完成"""
         self._rate_limiter.acquire(estimate_tokens(str(messages)))
 
         gen_kwargs = self._build_gen_kwargs(kwargs)
@@ -159,7 +148,7 @@ class HuggingFaceLLM:
         )
         latency_ms = (time.time() - start) * 1000
 
-        # Extract content from ChatCompletionOutput
+        # 从 ChatCompletionOutput 提取内容
         content = ""
         if hasattr(response, "choices") and response.choices:
             content = response.choices[0].message.content or ""
@@ -176,12 +165,12 @@ class HuggingFaceLLM:
         return content
 
     # ------------------------------------------------------------------ #
-    #  Streaming
+    #  流式输出
     # ------------------------------------------------------------------ #
 
     def stream_generate(self, prompt, **kwargs):
         # type: (str, **Any) -> Iterator[str]
-        """Stream text generation."""
+        """流式文本生成"""
         self._rate_limiter.acquire(estimate_tokens(prompt))
         gen_kwargs = self._build_gen_kwargs(kwargs)
 
@@ -208,7 +197,7 @@ class HuggingFaceLLM:
 
     def stream_chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Stream chat completion."""
+        """流式对话完成"""
         self._rate_limiter.acquire(estimate_tokens(str(messages)))
         gen_kwargs = self._build_gen_kwargs(kwargs)
 
@@ -299,7 +288,7 @@ class HuggingFaceLLM:
         return "HuggingFaceLLM(model='{}')".format(self.model_name)
 
     # ------------------------------------------------------------------ #
-    #  Internals
+    #  内部实现
     # ------------------------------------------------------------------ #
 
     def _build_gen_kwargs(self, overrides):
@@ -326,36 +315,25 @@ class HuggingFaceLLM:
 
 
 # ====================================================================== #
-#  Local Transformers Provider
+#  本地 Transformers 提供者
 # ====================================================================== #
 
 class HuggingFaceLocalLLM:
     """
-    Local HuggingFace transformers provider.
+    本地 HuggingFace transformers 提供者。
 
-    Uses ``transformers.pipeline`` for local model inference.
-    Requires ``torch`` + ``transformers`` installed.
+    使用 ``transformers.pipeline`` 进行本地模型推理。
+    需要安装 ``torch`` + ``transformers``。
 
-    Args:
-        model_name: HuggingFace model ID (default: ``"microsoft/Phi-3-mini-4k-instruct"``).
-        device: Device to load the model on (``"auto"``, ``"cpu"``, ``"cuda"``, ``"mps"``).
-        torch_dtype: Dtype for model weights (``"auto"``, ``"float16"``, ``"bfloat16"``).
-        temperature: Default temperature (default: 0.7).
-        max_tokens: Default max new tokens (default: 512).
-        load_in_4bit: Enable 4-bit quantization via bitsandbytes.
-        load_in_8bit: Enable 8-bit quantization.
-        **kwargs: Extra args passed to ``pipeline()`` or ``from_pretrained()``.
-
-    Example::
-
-        from llm_assessment.providers.huggingface import HuggingFaceLocalLLM
-
-        llm = HuggingFaceLocalLLM(
-            model_name="microsoft/Phi-3-mini-4k-instruct",
-            device="auto",
-            torch_dtype="float16",
-        )
-        print(llm.generate("What is deep learning?"))
+    参数：
+        model_name: HuggingFace 模型 ID（默认: ``"microsoft/Phi-3-mini-4k-instruct"``）。
+        device: 加载模型的设备（``"auto"``、``"cpu"``、``"cuda"``、``"mps"``）。
+        torch_dtype: 模型权重的数据类型（``"auto"``、``"float16"``、``"bfloat16"``）。
+        temperature: 默认温度（默认: 0.7）。
+        max_tokens: 默认最大新 token 数（默认: 512）。
+        load_in_4bit: 启用 4-bit 量化（通过 bitsandbytes）。
+        load_in_8bit: 启用 8-bit 量化。
+        **kwargs: 传递给 ``pipeline()`` 或 ``from_pretrained()`` 的额外参数。
     """
 
     def __init__(self, model_name="microsoft/Phi-3-mini-4k-instruct", **kwargs):
@@ -374,13 +352,13 @@ class HuggingFaceLocalLLM:
         self._load_in_4bit = kwargs.pop("load_in_4bit", False)
         self._load_in_8bit = kwargs.pop("load_in_8bit", False)
 
-        # Rate limiter (disabled by default for local)
+        # 速率限制器（本地默认禁用）
         rl_cfg = kwargs.pop("rate_limit", RateLimitConfig(enabled=False))
         if isinstance(rl_cfg, dict):
             rl_cfg = RateLimitConfig(**rl_cfg)
         self._rate_limiter = TokenBucketRateLimiter(rl_cfg)
 
-        # Lazy model loading — deferred until first call
+        # 延迟模型加载 — 推迟到首次调用
         self._pipeline = None
         self._tokenizer = None
         self._model_kwargs = kwargs
@@ -394,7 +372,7 @@ class HuggingFaceLocalLLM:
             pass
 
     def _load_model(self):
-        """Lazy-load the model and tokenizer on first use."""
+        """首次使用时延迟加载模型和分词器"""
         if self._pipeline is not None:
             return
 
@@ -409,7 +387,7 @@ class HuggingFaceLocalLLM:
 
         logger.info("Loading model '%s' — this may take a while...", self.model_name)
 
-        # Resolve torch dtype
+        # 解析 torch 数据类型
         dtype_map = {
             "auto": "auto",
             "float16": torch.float16,
@@ -479,7 +457,7 @@ class HuggingFaceLocalLLM:
         temperature = kwargs.pop("temperature", self._temperature)
         max_tokens = kwargs.pop("max_tokens", self._max_tokens)
 
-        # Apply chat template if available
+        # 如果有对话模板则应用
         if hasattr(self._tokenizer, "apply_chat_template"):
             prompt = self._tokenizer.apply_chat_template(
                 messages,
@@ -487,7 +465,7 @@ class HuggingFaceLocalLLM:
                 add_generation_prompt=True,
             )
         else:
-            # Fallback: concatenate messages
+            # 回退：拼接消息
             parts = []
             for msg in messages:
                 role = msg.get("role", "user")
@@ -515,15 +493,15 @@ class HuggingFaceLocalLLM:
         return content
 
     # ------------------------------------------------------------------ #
-    # Streaming (local transformers TextIteratorStreamer)
+    # 流式输出（本地 transformers TextIteratorStreamer）
     # ------------------------------------------------------------------ #
 
     def stream_generate(self, prompt, **kwargs):
         # type: (str, **Any) -> Iterator[str]
         """
-        Stream generation using TextIteratorStreamer.
+        使用 TextIteratorStreamer 进行流式生成。
 
-        Falls back to non-streaming if TextIteratorStreamer is not available.
+        如果 TextIteratorStreamer 不可用，则回退到非流式模式。
         """
         self._load_model()
 
@@ -573,7 +551,7 @@ class HuggingFaceLocalLLM:
 
     def stream_chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Stream chat — converts to prompt and streams."""
+        """流式对话 — 转换为提示词并流式输出"""
         self._load_model()
 
         if hasattr(self._tokenizer, "apply_chat_template"):
@@ -590,12 +568,12 @@ class HuggingFaceLocalLLM:
             yield chunk
 
     # ------------------------------------------------------------------ #
-    #  Batch
+    #  批量生成 (HuggingFaceLocalLLM)
     # ------------------------------------------------------------------ #
 
     def batch_generate(self, prompts, max_workers=1, **kwargs):
         # type: (List[str], int, **Any) -> List[str]
-        """Sequential batch — GPU contention makes parallelism harmful."""
+        """顺序批量 — GPU 竞争会使并行化适得其反"""
         return [self.generate(p, **kwargs) for p in prompts]
 
     # ------------------------------------------------------------------ #
@@ -633,7 +611,7 @@ class HuggingFaceLocalLLM:
         stats["model_name"] = self.model_name
         stats["call_count"] = self._usage.total_calls
         stats["total_tokens"] = self._usage.total_tokens
-        stats["total_cost_usd"] = 0.0  # Local inference = free
+        stats["total_cost_usd"] = 0.0  # 本地推理 = 免费
         return stats
 
     def __repr__(self):
@@ -642,7 +620,7 @@ class HuggingFaceLocalLLM:
         )
 
     # ------------------------------------------------------------------ #
-    #  Internal
+    #  内部实现 (HuggingFaceLocalLLM)
     # ------------------------------------------------------------------ #
 
     def _track_usage(self, prompt_tokens, completion_tokens, latency_ms):

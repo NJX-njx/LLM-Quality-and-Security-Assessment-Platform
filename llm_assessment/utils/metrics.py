@@ -1,10 +1,10 @@
 """
-Metrics and scoring utilities for evaluation.
+评估指标和评分工具模块。
 
-Provides reusable text comparison, statistical scoring, and result
-aggregation functions used across all evaluator strategies.
+提供可复用的文本比较、统计评分和结果聚合函数，
+被所有评估器策略共同使用。
 
-Compatible with Python >= 3.8 — no walrus operator or newer-only features.
+兼容 Python >= 3.8 — 不使用海象运算符或更新版本特有功能。
 """
 
 import re
@@ -13,20 +13,20 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 
 # ============================================================
-# Text Matching Metrics
+# 文本匹配指标
 # ============================================================
 
 def exact_match(predicted: str, expected: str, normalize: bool = True) -> bool:
     """
-    Exact match comparison between predicted and expected strings.
+    预测与期望字符串的精确匹配比较。
 
-    Args:
-        predicted: Model output text.
-        expected: Ground truth text.
-        normalize: If True, strip whitespace and lower-case before comparing.
+    参数：
+        predicted: 模型输出文本。
+        expected: 地面真值文本。
+        normalize: 如为 True，先去除空白并转小写后再比较。
 
-    Returns:
-        True if the texts match.
+    返回：
+        匹配则返回 True。
     """
     if normalize:
         predicted = predicted.strip().lower()
@@ -36,15 +36,15 @@ def exact_match(predicted: str, expected: str, normalize: bool = True) -> bool:
 
 def contains_match(text: str, target: str, case_sensitive: bool = False) -> bool:
     """
-    Check if *target* appears anywhere in *text*.
+    检查 *target* 是否出现在 *text* 中的任何位置。
 
-    Args:
-        text: The haystack.
-        target: The needle.
-        case_sensitive: Whether comparison is case-sensitive.
+    参数：
+        text: 被搜索的文本。
+        target: 要查找的字符串。
+        case_sensitive: 是否区分大小写。
 
-    Returns:
-        True if ``target`` is found inside ``text``.
+    返回：
+        找到则返回 True。
     """
     if not case_sensitive:
         text = text.lower()
@@ -54,15 +54,15 @@ def contains_match(text: str, target: str, case_sensitive: bool = False) -> bool
 
 def regex_match(text: str, pattern: str, flags: int = re.IGNORECASE) -> bool:
     """
-    Check if *pattern* matches anywhere in *text*.
+    检查 *pattern* 是否在 *text* 中匹配。
 
-    Args:
-        text: Input text to search.
-        pattern: Regular expression pattern.
-        flags: ``re`` flags (default: IGNORECASE).
+    参数：
+        text: 输入文本。
+        pattern: 正则表达式模式。
+        flags: ``re`` 标志（默认: 忽略大小写）。
 
-    Returns:
-        True if a match is found.
+    返回：
+        匹配则返回 True。
     """
     try:
         return bool(re.search(pattern, text, flags))
@@ -72,13 +72,13 @@ def regex_match(text: str, pattern: str, flags: int = re.IGNORECASE) -> bool:
 
 def regex_match_any(text: str, patterns: List[str],
                     flags: int = re.IGNORECASE) -> bool:
-    """Return True if *any* of the ``patterns`` match inside ``text``."""
+    """如果 *patterns* 中任一模式在 *text* 中匹配则返回 True"""
     return any(regex_match(text, p, flags) for p in patterns)
 
 
 def regex_match_all(text: str, patterns: List[str],
                     flags: int = re.IGNORECASE) -> bool:
-    """Return True only if *all* of the ``patterns`` match inside ``text``."""
+    """仅当 *patterns* 中所有模式都在 *text* 中匹配时返回 True"""
     return all(regex_match(text, p, flags) for p in patterns)
 
 
@@ -86,16 +86,16 @@ def keyword_match(text: str, keywords: List[str],
                   match_all: bool = False,
                   case_sensitive: bool = False) -> bool:
     """
-    Check for the presence of keywords in *text*.
+    检查 *text* 中是否存在关键词。
 
-    Args:
-        text: Input text.
-        keywords: List of keywords to look for.
-        match_all: If True, *all* keywords must be present; otherwise *any*.
-        case_sensitive: Whether comparison is case-sensitive.
+    参数：
+        text: 输入文本。
+        keywords: 要查找的关键词列表。
+        match_all: True 表示必须全部包含，否则任一包含即可。
+        case_sensitive: 是否区分大小写。
 
-    Returns:
-        True when the keyword condition is satisfied.
+    返回：
+        满足关键词条件时返回 True。
     """
     if not case_sensitive:
         text = text.lower()
@@ -108,19 +108,19 @@ def keyword_match(text: str, keywords: List[str],
 def numerical_match(text: str, expected: float,
                     tolerance: float = 1e-6) -> bool:
     """
-    Extract the first number from *text* and compare to *expected*.
+    从 *text* 中提取第一个数字并与 *expected* 比较。
 
-    Handles integers, decimals, negative numbers, and comma-separated values.
+    支持整数、小数、负数和带逗号分隔的数值。
 
-    Args:
-        text: Model output text.
-        expected: Expected numerical answer.
-        tolerance: Allowed absolute difference.
+    参数：
+        text: 模型输出文本。
+        expected: 期望的数值答案。
+        tolerance: 允许的绝对差值。
 
-    Returns:
-        True if extracted number is within ``tolerance`` of ``expected``.
+    返回：
+        提取的数字在容差范围内则返回 True。
     """
-    # Remove commas from numbers (e.g. "1,234" -> "1234")
+    # 从数字中移除逗号（如 "1,234" -> "1234"）
     cleaned = text.replace(",", "")
     numbers = re.findall(r"-?\d+\.?\d*", cleaned)
     for n in numbers:
@@ -136,25 +136,25 @@ def numerical_match(text: str, expected: float,
 def extract_choice_letter(text: str,
                           valid_choices: str = "ABCDEFGH") -> Optional[str]:
     """
-    Extract a single choice letter from model output.
+    从模型输出中提取单个选项字母。
 
-    Handles common formats: ``"A"``, ``"(A)"``, ``"A."``, ``"Answer: A"``.
+    支持常见格式：``"A"``、``"(A)"``、``"A."``、``"Answer: A"``。
 
-    Args:
-        text: Model output text.
-        valid_choices: String of valid choice letters.
+    参数：
+        text: 模型输出文本。
+        valid_choices: 有效选项字母字符串。
 
-    Returns:
-        Uppercase choice letter, or None if not found.
+    返回：
+        大写选项字母，或未找到时返回 None。
     """
     text = text.strip()
 
-    # Pattern 1: Starts with a single valid letter (possibly with punctuation)
+    # 模式 1: 以单个有效字母开头（可能带标点）
     m = re.match(r'^[(\[]?([' + valid_choices + r'])[)\].]?\s', text, re.IGNORECASE)
     if m:
         return m.group(1).upper()
 
-    # Pattern 2: "Answer: X" or "The answer is X"
+    # 模式 2: "Answer: X" 或 "The answer is X"
     m = re.search(
         r'(?:answer|choice|option)\s*(?:is|:)\s*[(\[]?([' + valid_choices + r'])[)\].]?',
         text, re.IGNORECASE
@@ -162,12 +162,12 @@ def extract_choice_letter(text: str,
     if m:
         return m.group(1).upper()
 
-    # Pattern 3: Just a single letter on its own (entire response)
+    # 模式 3: 仅为单个字母（整个响应）
     text_stripped = text.strip().strip("()[].")
     if len(text_stripped) == 1 and text_stripped.upper() in valid_choices:
         return text_stripped.upper()
 
-    # Pattern 4: Last letter in text that is a valid choice
+    # 模式 4: 文本中最后一个有效选项字母
     m = re.search(r'[(\[]?([' + valid_choices + r'])[)\].]?\s*$', text, re.IGNORECASE)
     if m:
         return m.group(1).upper()
@@ -177,23 +177,23 @@ def extract_choice_letter(text: str,
 
 def extract_number(text: str) -> Optional[float]:
     """
-    Extract the final numerical answer from text, handling chain-of-thought.
+    从文本中提取最终数值答案，处理思维链格式。
 
-    Looks for patterns like ``#### 42``, ``The answer is 42``, or just the
-    last number in the text.
+    查找如 ``#### 42``、``The answer is 42`` 等模式，
+    或文本中的最后一个数字。
 
-    Args:
-        text: Model output text.
+    参数：
+        text: 模型输出文本。
 
-    Returns:
-        Extracted number or None.
+    返回：
+        提取的数字，或 None。
     """
-    # GSM8K-style "#### <number>"
+    # GSM8K 风格 "#### <数字>"
     m = re.search(r'####\s*(-?\d[\d,]*\.?\d*)', text)
     if m:
         return float(m.group(1).replace(",", ""))
 
-    # "The answer is <number>"
+    # "The answer is <数字>"
     m = re.search(
         r'(?:the\s+)?(?:final\s+)?answer\s+is\s*:?\s*(-?\d[\d,]*\.?\d*)',
         text, re.IGNORECASE
@@ -201,7 +201,7 @@ def extract_number(text: str) -> Optional[float]:
     if m:
         return float(m.group(1).replace(",", ""))
 
-    # Fallback: last number in text
+    # 回退：文本中的最后一个数字
     numbers = re.findall(r'-?\d[\d,]*\.?\d*', text)
     if numbers:
         try:
@@ -213,19 +213,19 @@ def extract_number(text: str) -> Optional[float]:
 
 
 # ============================================================
-# Statistical / Aggregate Metrics
+# 统计 / 聚合指标
 # ============================================================
 
 def accuracy(correct: int, total: int) -> float:
     """
-    Compute accuracy as a percentage (0-100).
+    计算准确率（百分比 0-100）。
 
-    Args:
-        correct: Number of correct answers.
-        total: Total number of questions.
+    参数：
+        correct: 正确答案数。
+        total: 总题目数。
 
-    Returns:
-        Accuracy percentage.
+    返回：
+        准确率百分比。
     """
     if total <= 0:
         return 0.0
@@ -234,17 +234,14 @@ def accuracy(correct: int, total: int) -> float:
 
 def weighted_average(scores: List[float], weights: List[float]) -> float:
     """
-    Compute weighted average of *scores* using *weights*.
+    使用 *weights* 计算 *scores* 的加权平均值。
 
-    Args:
-        scores: List of score values (0-100).
-        weights: Corresponding weights. Need not sum to 1.
+    参数：
+        scores: 分数值列表（0-100）。
+        weights: 对应权重。无需总和为 1。
 
-    Returns:
-        Weighted average.
-
-    Raises:
-        ValueError: If lists have different lengths.
+    返回：
+        加权平均值。
     """
     if len(scores) != len(weights):
         raise ValueError("scores and weights must have the same length")
@@ -256,15 +253,15 @@ def weighted_average(scores: List[float], weights: List[float]) -> float:
 
 def harmonic_mean(values: List[float]) -> float:
     """
-    Compute the harmonic mean of non-zero positive values.
+    计算非零正值的调和平均值。
 
-    Useful for F1-like aggregation.
+    适用于 F1 计算等聚合场景。
 
-    Args:
-        values: List of positive floats.
+    参数：
+        values: 正浮点数列表。
 
-    Returns:
-        Harmonic mean, or 0.0 if any value is zero.
+    返回：
+        调和平均值，或任一值为零时返回 0.0。
     """
     positive = [v for v in values if v > 0]
     if not positive or len(positive) != len(values):
@@ -274,15 +271,15 @@ def harmonic_mean(values: List[float]) -> float:
 
 def precision_recall_f1(tp: int, fp: int, fn: int) -> Dict[str, float]:
     """
-    Compute precision, recall, and F1 from confusion-matrix counts.
+    从混淆矩阵计数计算准确率、召回率和 F1。
 
-    Args:
-        tp: True positives.
-        fp: False positives.
-        fn: False negatives.
+    参数：
+        tp: 真正例。
+        fp: 假正例。
+        fn: 假反例。
 
-    Returns:
-        Dict with ``precision``, ``recall``, ``f1`` keys (0-1 range).
+    返回：
+        含 ``precision``、``recall``、``f1`` 键的字典（0-1 范围）。
     """
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
@@ -293,14 +290,14 @@ def precision_recall_f1(tp: int, fp: int, fn: int) -> Dict[str, float]:
 def cohen_kappa(observed_agreement: float,
                 expected_agreement: float) -> float:
     """
-    Compute Cohen's Kappa inter-rater agreement coefficient.
+    计算 Cohen's Kappa 评分者间一致性系数。
 
-    Args:
-        observed_agreement: Proportion of actual agreement (0-1).
-        expected_agreement: Proportion of agreement by chance (0-1).
+    参数：
+        observed_agreement: 实际一致比例（0-1）。
+        expected_agreement: 随机一致比例（0-1）。
 
-    Returns:
-        Kappa value in [-1, 1].
+    返回：
+        Kappa 值，范围 [-1, 1]。
     """
     if expected_agreement >= 1.0:
         return 1.0
@@ -310,19 +307,19 @@ def cohen_kappa(observed_agreement: float,
 def confidence_interval(score: float, n: int,
                         confidence: float = 0.95) -> Tuple[float, float]:
     """
-    Compute Wilson score confidence interval for a proportion.
+    计算比例的 Wilson 分数置信区间。
 
-    Args:
-        score: Observed proportion (0-1).
-        n: Sample size.
-        confidence: Confidence level (default 0.95).
+    参数：
+        score: 观察比例（0-1）。
+        n: 样本量。
+        confidence: 置信水平（默认 0.95）。
 
-    Returns:
-        (lower_bound, upper_bound) as proportions.
+    返回：
+        (下界, 上界) 比例值。
     """
     if n <= 0:
         return (0.0, 0.0)
-    # z-value for common confidence levels
+    # 常见置信水平的 z 值
     z_map = {0.90: 1.645, 0.95: 1.96, 0.99: 2.576}
     z = z_map.get(confidence, 1.96)
 
@@ -335,19 +332,19 @@ def confidence_interval(score: float, n: int,
 
 
 # ============================================================
-# Text Similarity Metrics
+# 文本相似度指标
 # ============================================================
 
 def jaccard_similarity(text_a: str, text_b: str) -> float:
     """
-    Compute Jaccard similarity between two texts (word-level).
+    计算两段文本的 Jaccard 相似度（词级别）。
 
-    Args:
-        text_a: First text.
-        text_b: Second text.
+    参数：
+        text_a: 第一段文本。
+        text_b: 第二段文本。
 
-    Returns:
-        Similarity in [0, 1].
+    返回：
+        相似度，范围 [0, 1]。
     """
     words_a = set(text_a.lower().split())
     words_b = set(text_b.lower().split())
@@ -360,15 +357,15 @@ def jaccard_similarity(text_a: str, text_b: str) -> float:
 
 def ngram_overlap(text_a: str, text_b: str, n: int = 2) -> float:
     """
-    Compute n-gram overlap ratio between two texts.
+    计算两段文本的 n-gram 重叠率。
 
-    Args:
-        text_a: First text.
-        text_b: Second text.
-        n: N-gram size (default bigram).
+    参数：
+        text_a: 第一段文本。
+        text_b: 第二段文本。
+        n: N-gram 大小（默认为 bigram）。
 
-    Returns:
-        Overlap ratio in [0, 1].
+    返回：
+        重叠率，范围 [0, 1]。
     """
     def get_ngrams(text, size):
         words = text.lower().split()
@@ -384,7 +381,7 @@ def ngram_overlap(text_a: str, text_b: str, n: int = 2) -> float:
 
 
 # ============================================================
-# Score Normalization
+# 分数归一化
 # ============================================================
 
 def normalize_score(raw_score: float,
@@ -392,16 +389,16 @@ def normalize_score(raw_score: float,
                     max_val: float = 100.0,
                     clip: bool = True) -> float:
     """
-    Normalize a raw score into the [0, 100] range.
+    将原始分数归一化到 [0, 100] 范围。
 
-    Args:
-        raw_score: The raw score value.
-        min_val: Minimum expected value.
-        max_val: Maximum expected value.
-        clip: If True, clip the result to [0, 100].
+    参数：
+        raw_score: 原始分数值。
+        min_val: 期望的最小值。
+        max_val: 期望的最大值。
+        clip: 如为 True，将结果截断到 [0, 100]。
 
-    Returns:
-        Normalized score (0-100).
+    返回：
+        归一化分数（0-100）。
     """
     if max_val <= min_val:
         return 0.0
@@ -413,16 +410,16 @@ def normalize_score(raw_score: float,
 
 def severity_to_score(severity: str) -> float:
     """
-    Convert a severity label to a numeric impact score.
+    将严重性标签转换为数值影响分数。
 
-    Mapping:
+    映射：
         critical → 1.0, high → 0.8, medium → 0.5, low → 0.2, info → 0.05
 
-    Args:
-        severity: One of 'critical', 'high', 'medium', 'low', 'info'.
+    参数：
+        severity: 'critical'、'high'、'medium'、'low'、'info' 之一。
 
-    Returns:
-        Impact score in (0, 1].
+    返回：
+        影响分数，范围 (0, 1]。
     """
     mapping = {
         "critical": 1.0,

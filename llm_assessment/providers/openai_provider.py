@@ -1,16 +1,16 @@
 """
-OpenAI LLM Provider — Supports OpenAI API and Azure OpenAI Service.
+OpenAI LLM 提供者 — 支持 OpenAI API 和 Azure OpenAI 服务。
 
-Features:
-    - GPT-4o / GPT-4 / GPT-3.5 / o1 / o3-mini model families
-    - Azure OpenAI Service with deployment-based routing
-    - Streaming support
-    - Automatic retry with exponential backoff
-    - Rate limiting (token bucket)
-    - Detailed usage tracking and cost estimation
+功能特性：
+    - 支持 GPT-4o / GPT-4 / GPT-3.5 / o1 / o3-mini 模型系列
+    - Azure OpenAI 服务，基于部署的路由
+    - 流式输出支持
+    - 自动重试（指数退避）
+    - 速率限制（令牌桶）
+    - 详细的用量跟踪和成本估算
 
-Reference:
-    - OpenAI API docs: https://platform.openai.com/docs/api-reference
+参考：
+    - OpenAI API 文档: https://platform.openai.com/docs/api-reference
     - Azure OpenAI: https://learn.microsoft.com/en-us/azure/ai-services/openai/
 """
 
@@ -33,28 +33,21 @@ logger = logging.getLogger(__name__)
 
 class OpenAILLM:
     """
-    OpenAI LLM provider (ChatCompletion API).
+    OpenAI LLM 提供者（ChatCompletion API）。
 
-    Supports all chat-based OpenAI models including GPT-4o, o1, o3-mini.
+    支持所有基于对话的 OpenAI 模型，包括 GPT-4o、o1、o3-mini。
 
-    Args:
-        model_name: Model identifier (default: ``"gpt-4o-mini"``).
-        api_key: OpenAI API key. Falls back to ``OPENAI_API_KEY`` env var.
-        base_url: Override the API base URL (useful for proxies).
-        organization: OpenAI organization ID.
-        timeout: Request timeout in seconds (default: 120).
-        max_retries: Maximum retry attempts for transient errors (default: 3).
-        temperature: Default sampling temperature (default: 0.7).
-        max_tokens: Default max tokens for generation.
-        rate_limit: ``RateLimitConfig`` instance or dict.
-        **kwargs: Additional configuration passed to the client.
-
-    Example::
-
-        from llm_assessment.providers.openai_provider import OpenAILLM
-
-        llm = OpenAILLM(model_name="gpt-4o-mini", api_key="sk-...")
-        print(llm.generate("Hello!"))
+    参数：
+        model_name: 模型标识符（默认: ``"gpt-4o-mini"``）。
+        api_key: OpenAI API 密钥。会回退到 ``OPENAI_API_KEY`` 环境变量。
+        base_url: 覆盖 API 基础 URL（适用于代理）。
+        organization: OpenAI 组织 ID。
+        timeout: 请求超时时间（秒，默认: 120）。
+        max_retries: 瞬态错误的最大重试次数（默认: 3）。
+        temperature: 默认采样温度（默认: 0.7）。
+        max_tokens: 生成的最大 token 数。
+        rate_limit: ``RateLimitConfig`` 实例或字典。
+        **kwargs: 传递给客户端的其他配置。
     """
 
     def __init__(self, model_name="gpt-4o-mini", **kwargs):
@@ -62,29 +55,29 @@ class OpenAILLM:
         self.model_name = model_name
         self.config = kwargs
 
-        # Backward-compat
+        # 向后兼容字段
         self.call_count = 0
         self.total_tokens = 0
 
-        # Usage tracking
+        # 用量跟踪
         self._usage = UsageStats()
 
-        # Default generation params
+        # 默认生成参数
         self._temperature = kwargs.pop("temperature", 0.7)
         self._max_tokens = kwargs.pop("max_tokens", None)
         self._timeout = kwargs.pop("timeout", 120)
 
-        # Retry config
+        # 重试配置
         max_retries_sdk = kwargs.pop("max_retries", 3)
         self._retry_config = RetryConfig(max_retries=max_retries_sdk)
 
-        # Rate limiter
+        # 速率限制器
         rl_cfg = kwargs.pop("rate_limit", None)
         if isinstance(rl_cfg, dict):
             rl_cfg = RateLimitConfig(**rl_cfg)
         self._rate_limiter = TokenBucketRateLimiter(rl_cfg)
 
-        # ---- Create OpenAI client (lazy import) ----
+        # ---- 创建 OpenAI 客户端（延迟导入） ----
         try:
             import openai
         except ImportError:
@@ -105,12 +98,12 @@ class OpenAILLM:
         if organization:
             client_kwargs["organization"] = organization
         client_kwargs["timeout"] = self._timeout
-        # Let the SDK handle its own retries as a last-resort fallback
+        # 让 SDK 的自带重试作为最后的备用方案
         client_kwargs["max_retries"] = 0
 
         self.client = openai.OpenAI(**client_kwargs)
 
-        # Initialize BaseLLM if used as subclass
+        # 如果作为子类使用则初始化 BaseLLM
         try:
             from ..core.llm_wrapper import BaseLLM
             if isinstance(self, BaseLLM):
@@ -119,46 +112,46 @@ class OpenAILLM:
             pass
 
     # ------------------------------------------------------------------ #
-    #  Core generation
+    #  核心生成方法
     # ------------------------------------------------------------------ #
 
     @retry_on_error
     def generate(self, prompt, **kwargs):
         # type: (str, **Any) -> str
-        """Generate a response from a single prompt."""
+        """从单个提示词生成响应"""
         messages = [{"role": "user", "content": prompt}]
         return self._chat_completion(messages, **kwargs)
 
     @retry_on_error
     def chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
-        """Multi-turn chat completion."""
+        """多轮对话完成"""
         return self._chat_completion(messages, **kwargs)
 
     # ------------------------------------------------------------------ #
-    #  Streaming
+    #  流式输出
     # ------------------------------------------------------------------ #
 
     def stream_generate(self, prompt, **kwargs):
         # type: (str, **Any) -> Iterator[str]
-        """Stream a response from a single prompt, yielding text chunks."""
+        """从单个提示词流式生成响应，逐块产出文本"""
         messages = [{"role": "user", "content": prompt}]
         for chunk in self._stream_chat_completion(messages, **kwargs):
             yield chunk
 
     def stream_chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Stream a multi-turn chat completion."""
+        """流式多轮对话完成"""
         for chunk in self._stream_chat_completion(messages, **kwargs):
             yield chunk
 
     # ------------------------------------------------------------------ #
-    #  Batch
+    #  批量生成
     # ------------------------------------------------------------------ #
 
     def batch_generate(self, prompts, max_workers=4, **kwargs):
         # type: (List[str], int, **Any) -> List[str]
-        """Generate responses for multiple prompts using thread pool."""
+        """使用线程池为多个提示词批量生成响应"""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         results = [None] * len(prompts)
@@ -177,12 +170,12 @@ class OpenAILLM:
         return results
 
     # ------------------------------------------------------------------ #
-    #  Health check
+    #  健康检查
     # ------------------------------------------------------------------ #
 
     def health_check(self):
         # type: () -> Dict[str, Any]
-        """Verify the OpenAI API is reachable."""
+        """验证 OpenAI API 是否可达"""
         start = time.time()
         try:
             resp = self.generate("Say 'ok'.", max_tokens=5)
@@ -203,7 +196,7 @@ class OpenAILLM:
             }
 
     # ------------------------------------------------------------------ #
-    #  Stats
+    #  统计信息
     # ------------------------------------------------------------------ #
 
     def get_stats(self):
@@ -219,12 +212,12 @@ class OpenAILLM:
         return "OpenAILLM(model='{}')".format(self.model_name)
 
     # ------------------------------------------------------------------ #
-    #  Internal helpers
+    #  内部辅助方法
     # ------------------------------------------------------------------ #
 
     def _chat_completion(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
-        """Perform a non-streaming ChatCompletion request."""
+        """执行非流式 ChatCompletion 请求"""
         self._rate_limiter.acquire(estimate_tokens(str(messages)))
 
         request_kwargs = self._build_request_kwargs(kwargs)
@@ -238,7 +231,7 @@ class OpenAILLM:
         )
         latency_ms = (time.time() - start) * 1000
 
-        # Extract usage
+        # 提取用量信息
         usage = response.usage
         prompt_tokens = usage.prompt_tokens if usage else 0
         completion_tokens = usage.completion_tokens if usage else 0
@@ -250,7 +243,7 @@ class OpenAILLM:
 
     def _stream_chat_completion(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Perform a streaming ChatCompletion request."""
+        """执行流式 ChatCompletion 请求"""
         self._rate_limiter.acquire(estimate_tokens(str(messages)))
 
         request_kwargs = self._build_request_kwargs(kwargs)
@@ -269,7 +262,7 @@ class OpenAILLM:
         )
 
         for chunk in stream:
-            # Usage info comes in the last chunk
+            # 用量信息在最后一个 chunk 中
             if chunk.usage:
                 prompt_tokens = chunk.usage.prompt_tokens or 0
                 completion_tokens = chunk.usage.completion_tokens or 0
@@ -282,7 +275,7 @@ class OpenAILLM:
 
         latency_ms = (time.time() - start) * 1000
 
-        # Fall back to estimation if usage not provided
+        # 如果未提供用量信息，回退到估算
         if not prompt_tokens:
             full_text = "".join(collected_content)
             prompt_tokens = estimate_tokens(str(messages))
@@ -292,26 +285,26 @@ class OpenAILLM:
 
     def _build_request_kwargs(self, overrides):
         # type: (Dict[str, Any]) -> Dict[str, Any]
-        """Merge default params with per-call overrides."""
+        """将默认参数与每次调用的覆盖参数合并"""
         kwargs = {}
 
         temperature = overrides.pop("temperature", self._temperature)
         max_tokens = overrides.pop("max_tokens", self._max_tokens)
 
-        # o1 / o3 models don't support temperature
+        # o1 / o3 模型不支持 temperature 参数
         model_lower = self.model_name.lower()
         if not any(model_lower.startswith(p) for p in ("o1", "o3")):
             kwargs["temperature"] = temperature
 
         if max_tokens is not None:
-            # o1/o3 models use 'max_completion_tokens' instead of 'max_tokens'
+            # o1/o3 模型使用 'max_completion_tokens' 而非 'max_tokens'
             if any(model_lower.startswith(p) for p in ("o1", "o3")):
                 kwargs["max_completion_tokens"] = max_tokens
             else:
                 kwargs["max_tokens"] = max_tokens
 
-        # Pass through remaining kwargs (top_p, stop, etc.)
-        # Filter out our internal keys
+        # 透传其余 kwargs（top_p, stop 等）
+        # 过滤掉内部使用的 key
         internal_keys = {
             "api_key", "base_url", "organization", "timeout",
             "rate_limit", "retry", "max_retries",
@@ -324,7 +317,7 @@ class OpenAILLM:
 
     def _track_usage(self, prompt_tokens, completion_tokens, latency_ms):
         # type: (int, int, float) -> None
-        """Record usage statistics."""
+        """记录用量统计"""
         self._usage.total_calls += 1
         self._usage.total_prompt_tokens += prompt_tokens
         self._usage.total_completion_tokens += completion_tokens
@@ -333,34 +326,24 @@ class OpenAILLM:
         self._usage.total_cost_usd += estimate_cost(
             self.model_name, prompt_tokens, completion_tokens
         )
-        # Backward compat
+        # 向后兼容
         self.call_count = self._usage.total_calls
         self.total_tokens = self._usage.total_tokens
 
 
 class AzureOpenAILLM:
     """
-    Azure OpenAI Service provider.
+    Azure OpenAI 服务提供者。
 
-    Uses the Azure-specific endpoint and API version format.
+    使用 Azure 特定的端点和 API 版本格式。
 
-    Args:
-        model_name: The Azure *deployment name* (not the model name).
-        api_key: Azure OpenAI API key. Falls back to ``AZURE_OPENAI_API_KEY``.
-        azure_endpoint: Azure resource endpoint
-            (e.g. ``"https://my-resource.openai.azure.com"``).
-        api_version: Azure API version (default: ``"2024-10-21"``).
-        **kwargs: Same options as ``OpenAILLM``.
-
-    Example::
-
-        from llm_assessment.providers.openai_provider import AzureOpenAILLM
-
-        llm = AzureOpenAILLM(
-            model_name="my-gpt4o-deployment",
-            azure_endpoint="https://my-resource.openai.azure.com",
-            api_key="...",
-        )
+    参数：
+        model_name: Azure 部署名称（非模型名）。
+        api_key: Azure OpenAI API 密钥。回退到 ``AZURE_OPENAI_API_KEY``。
+        azure_endpoint: Azure 资源端点
+            （如 ``"https://my-resource.openai.azure.com"``）。
+        api_version: Azure API 版本（默认: ``"2024-10-21"``）。
+        **kwargs: 与 ``OpenAILLM`` 相同的选项。
     """
 
     def __init__(self, model_name="gpt-4o", **kwargs):
@@ -368,18 +351,18 @@ class AzureOpenAILLM:
         self.model_name = model_name
         self.config = kwargs
 
-        # Backward-compat
+        # 向后兼容字段
         self.call_count = 0
         self.total_tokens = 0
 
-        # Usage tracking
+        # 用量跟踪
         self._usage = UsageStats()
 
         self._temperature = kwargs.pop("temperature", 0.7)
         self._max_tokens = kwargs.pop("max_tokens", None)
         self._timeout = kwargs.pop("timeout", 120)
 
-        # Retry / rate limit
+        # 重试 / 速率限制
         self._retry_config = RetryConfig(
             max_retries=kwargs.pop("max_retries", 3)
         )
@@ -388,7 +371,7 @@ class AzureOpenAILLM:
             rl_cfg = RateLimitConfig(**rl_cfg)
         self._rate_limiter = TokenBucketRateLimiter(rl_cfg)
 
-        # ---- Azure OpenAI client ----
+        # ---- Azure OpenAI 客户端 ----
         try:
             import openai
         except ImportError:
@@ -423,9 +406,8 @@ class AzureOpenAILLM:
         except (ImportError, TypeError):
             pass
 
-    # The rest of the methods delegate to the same pattern as OpenAILLM.
-    # We share the implementation via composition rather than inheritance
-    # to keep each class self‑contained for clarity.
+    # 其余方法与 OpenAILLM 采用相同模式。
+    # 通过组合而非继承共享实现，保持每个类的独立性和清晰性。
 
     @retry_on_error
     def generate(self, prompt, **kwargs):
@@ -498,7 +480,7 @@ class AzureOpenAILLM:
     def __repr__(self):
         return "AzureOpenAILLM(model='{}')".format(self.model_name)
 
-    # ---- Internals (same logic as OpenAILLM) ----
+    # ---- 内部实现（与 OpenAILLM 相同的逻辑） ----
 
     def _chat_completion(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str

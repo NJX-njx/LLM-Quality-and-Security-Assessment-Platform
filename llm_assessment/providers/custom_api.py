@@ -1,24 +1,21 @@
 """
-Custom API LLM Provider — Connect to any OpenAI-compatible or custom REST API.
+自定义 API LLM 提供者 — 连接任何 OpenAI 兼容或自定义 REST API。
 
-Designed for enterprise / self-hosted LLM endpoints that expose a REST API
-but don't conform to any specific SDK.
+专为企业/自托管 LLM 端点设计，这些端点暴露 REST API
+但不符合任何特定的 SDK 规范。
 
-Features:
-    - Flexible request/response mapping for arbitrary API formats
-    - OpenAI-compatible mode for quick setup
-    - Custom header injection (auth tokens, API keys, etc.)
-    - Configurable JSON paths for extracting response content
-    - Streaming support (SSE-based)
-    - Retry, rate limiting, usage tracking
+功能特性：
+    - 灵活的请求/响应映射，支持任意 API 格式
+    - OpenAI 兼容模式，可快速设置
+    - 自定义请求头注入（认证令牌、API 密钥等）
+    - 可配置的 JSON 路径用于提取响应内容
+    - 流式输出支持（基于 SSE）
+    - 重试、速率限制、用量跟踪
 
-Example API formats supported:
-    - OpenAI-compatible (``/v1/chat/completions``)
-    - Ollama-style (``/api/generate``)
-    - Custom enterprise APIs with arbitrary JSON structures
-
-Reference:
-    Inspired by LiteLLM's custom API handling.
+支持的 API 格式示例：
+    - OpenAI 兼容（``/v1/chat/completions``）
+    - Ollama 风格（``/api/generate``）
+    - 任意 JSON 结构的自定义企业 API
 """
 
 import json
@@ -40,9 +37,9 @@ logger = logging.getLogger(__name__)
 
 def _extract_json_path(data, path, default=""):
     """
-    Extract a value from nested JSON using dot-separated path.
+    使用点分隔路径从嵌套 JSON 中提取值。
 
-    Example::
+    示例::
         _extract_json_path({"a": {"b": "c"}}, "a.b")  # "c"
         _extract_json_path({"choices": [{"text": "hi"}]}, "choices.0.text")  # "hi"
     """
@@ -63,41 +60,26 @@ def _extract_json_path(data, path, default=""):
 
 class CustomAPILLM:
     """
-    Custom REST API LLM provider.
+    自定义 REST API LLM 提供者。
 
-    Args:
-        model_name: Model identifier sent in the request body.
-        base_url: API base URL (required).
-        api_key: API key sent in the ``Authorization`` header.
-        headers: Additional HTTP headers (dict).
-        chat_endpoint: Path for chat completions (default: ``"/v1/chat/completions"``).
-        generate_endpoint: Path for text generation (default: same as chat).
-        request_template: Dict template for request body.
-            Use ``{prompt}``, ``{messages}``, ``{model}``, ``{max_tokens}``,
-            ``{temperature}`` as placeholders.
-        response_content_path: JSON path to extract response text
-            (default: ``"choices.0.message.content"``).
-        api_style: Shortcut for common API styles.
-            ``"openai"`` (default), ``"ollama"``, or ``"custom"``.
-        temperature: Default temperature (default: 0.7).
-        max_tokens: Default max tokens (default: 1024).
-        timeout: Request timeout in seconds (default: 120).
-        **kwargs: Additional configuration.
-
-    Example — OpenAI-compatible API::
-
-        llm = CustomAPILLM(
-            model_name="my-model",
-            base_url="https://my-api.example.com",
-            api_key="sk-...",
-            api_style="openai",
-        )
-
-    Example — Fully custom API::
-
-        llm = CustomAPILLM(
-            model_name="custom-v1",
-            base_url="https://api.internal.corp",
+    参数：
+        model_name: 请求体中发送的模型标识符。
+        base_url: API 基础 URL（必填）。
+        api_key: 在 ``Authorization`` 头中发送的 API 密钥。
+        headers: 额外的 HTTP 头（字典）。
+        chat_endpoint: 对话完成的路径（默认: ``"/v1/chat/completions"``）。
+        generate_endpoint: 文本生成的路径。
+        request_template: 请求体的字典模板。
+            使用 ``{prompt}``、``{messages}``、``{model}``、``{max_tokens}``、
+            ``{temperature}`` 作为占位符。
+        response_content_path: 提取响应文本的 JSON 路径。
+        api_style: 常见 API 风格的快捷方式。
+            ``"openai"``（默认）、``"ollama"`` 或 ``"custom"``。
+        temperature: 默认温度（默认: 0.7）。
+        max_tokens: 默认最大 token 数（默认: 1024）。
+        timeout: 请求超时（秒，默认: 120）。
+        **kwargs: 其他配置。
+    """
             headers={"X-API-Key": "secret"},
             chat_endpoint="/inference",
             request_template={
@@ -118,7 +100,7 @@ class CustomAPILLM:
         self.total_tokens = 0
         self._usage = UsageStats()
 
-        # API config
+        # API 配置
         self.base_url = kwargs.pop("base_url", "http://localhost:8000")
         self.base_url = self.base_url.rstrip("/")
 
@@ -130,7 +112,7 @@ class CustomAPILLM:
             self._headers["Authorization"] = "Bearer {}".format(api_key)
         self._headers.update(extra_headers)
 
-        # Endpoint paths
+        # 端点路径
         api_style = kwargs.pop("api_style", "openai")
 
         if api_style == "ollama":
@@ -138,7 +120,7 @@ class CustomAPILLM:
             default_gen = "/api/generate"
             default_content_path = "message.content"
         else:
-            # OpenAI-compatible (default)
+            # OpenAI 兼容（默认）
             default_chat = "/v1/chat/completions"
             default_gen = "/v1/chat/completions"
             default_content_path = "choices.0.message.content"
@@ -150,26 +132,26 @@ class CustomAPILLM:
         )
         self._api_style = api_style
 
-        # Custom request template
+        # 自定义请求模板
         self._request_template = kwargs.pop("request_template", None)
 
-        # Generation defaults
+        # 生成默认值
         self._temperature = kwargs.pop("temperature", 0.7)
         self._max_tokens = kwargs.pop("max_tokens", 1024)
         self._timeout = kwargs.pop("timeout", 120)
 
-        # Retry
+        # 重试配置
         self._retry_config = RetryConfig(
             max_retries=kwargs.pop("max_retries", 3)
         )
 
-        # Rate limiter
+        # 速率限制器
         rl_cfg = kwargs.pop("rate_limit", None)
         if isinstance(rl_cfg, dict):
             rl_cfg = RateLimitConfig(**rl_cfg)
         self._rate_limiter = TokenBucketRateLimiter(rl_cfg)
 
-        # Verify requests is available
+        # 验证 requests 是否可用
         try:
             import requests  # noqa: F401
         except ImportError:
@@ -187,27 +169,27 @@ class CustomAPILLM:
             pass
 
     # ------------------------------------------------------------------ #
-    #  Core generation
+    #  核心生成方法
     # ------------------------------------------------------------------ #
 
     @retry_on_error
     def generate(self, prompt, **kwargs):
         # type: (str, **Any) -> str
-        """Generate text from a prompt."""
+        """从提示词生成文本"""
         if self._api_style == "ollama":
             return self._ollama_generate(prompt, **kwargs)
-        # Default: use chat-style with a single user message
+        # 默认：使用对话风格的单个用户消息
         messages = [{"role": "user", "content": prompt}]
         return self._chat_request(messages, **kwargs)
 
     @retry_on_error
     def chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
-        """Multi-turn chat completion."""
+        """多轮对话完成"""
         return self._chat_request(messages, **kwargs)
 
     # ------------------------------------------------------------------ #
-    #  Streaming
+    #  流式输出
     # ------------------------------------------------------------------ #
 
     def stream_generate(self, prompt, **kwargs):
@@ -222,7 +204,7 @@ class CustomAPILLM:
             yield chunk
 
     # ------------------------------------------------------------------ #
-    #  Batch
+    #  批量生成
     # ------------------------------------------------------------------ #
 
     def batch_generate(self, prompts, max_workers=4, **kwargs):
@@ -244,7 +226,7 @@ class CustomAPILLM:
         return results
 
     # ------------------------------------------------------------------ #
-    #  Health check
+    #  健康检查
     # ------------------------------------------------------------------ #
 
     def health_check(self):
@@ -253,7 +235,7 @@ class CustomAPILLM:
 
         start = time.time()
         try:
-            # Try a simple GET to the base URL
+            # 尝试对基础 URL 发送简单 GET 请求
             resp = requests.get(
                 self.base_url,
                 headers=self._headers,
@@ -276,7 +258,7 @@ class CustomAPILLM:
             }
 
     # ------------------------------------------------------------------ #
-    #  Stats
+    #  统计信息
     # ------------------------------------------------------------------ #
 
     def get_stats(self):
@@ -293,12 +275,12 @@ class CustomAPILLM:
         )
 
     # ------------------------------------------------------------------ #
-    #  Internal — request builders
+    #  内部 — 请求构建器
     # ------------------------------------------------------------------ #
 
     def _chat_request(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
-        """Send a non-streaming chat request."""
+        """发送非流式对话请求"""
         import requests
 
         self._rate_limiter.acquire(estimate_tokens(str(messages)))
@@ -315,7 +297,7 @@ class CustomAPILLM:
                 max_tokens=max_tokens,
             )
         else:
-            # OpenAI-compatible format
+            # OpenAI 兼容格式
             payload = {
                 "model": self.model_name,
                 "messages": messages,
@@ -342,7 +324,7 @@ class CustomAPILLM:
         if not isinstance(content, str):
             content = str(content)
 
-        # Try to get usage from response
+        # 尝试从响应中获取用量信息
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0) or estimate_tokens(str(messages))
         completion_tokens = usage.get("completion_tokens", 0) or estimate_tokens(content)
@@ -352,7 +334,7 @@ class CustomAPILLM:
 
     def _ollama_generate(self, prompt, **kwargs):
         # type: (str, **Any) -> str
-        """Ollama-style /api/generate request."""
+        """Ollama 风格的 /api/generate 请求"""
         import requests
 
         self._rate_limiter.acquire(estimate_tokens(prompt))
@@ -394,7 +376,7 @@ class CustomAPILLM:
 
     def _stream_chat_request(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Send a streaming SSE-based request."""
+        """发送基于 SSE 的流式请求"""
         import requests
 
         self._rate_limiter.acquire(estimate_tokens(str(messages)))
@@ -429,19 +411,19 @@ class CustomAPILLM:
             if not line:
                 continue
             line_str = line.decode("utf-8") if isinstance(line, bytes) else line
-            # Handle SSE format: "data: {...}"
+            # 处理 SSE 格式: "data: {...}"
             if line_str.startswith("data: "):
                 line_str = line_str[6:]
             if line_str.strip() == "[DONE]":
                 break
             try:
                 data = json.loads(line_str)
-                # Try OpenAI SSE format
+                # 尝试 OpenAI SSE 格式
                 text = _extract_json_path(
                     data, "choices.0.delta.content", ""
                 )
                 if not text:
-                    # Try Ollama streaming format
+                    # 尝试 Ollama 流式格式
                     text = data.get("message", {}).get("content", "")
                 if not text:
                     text = data.get("response", "")
@@ -461,10 +443,10 @@ class CustomAPILLM:
     @staticmethod
     def _render_template(template, **values):
         """
-        Recursively render a request template dict by replacing placeholders.
+        递归渲染请求模板字典，替换占位符。
 
-        Supports ``{prompt}``, ``{messages}``, ``{model}``, ``{max_tokens}``,
-        ``{temperature}`` in string values.
+        支持字符串值中的 ``{prompt}``、``{messages}``、``{model}``、
+        ``{max_tokens}``、``{temperature}`` 占位符。
         """
         if isinstance(template, dict):
             return {

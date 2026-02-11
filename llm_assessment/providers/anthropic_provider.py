@@ -1,16 +1,16 @@
 """
-Anthropic LLM Provider — Claude model family.
+Anthropic LLM 提供者 — Claude 模型系列。
 
-Features:
-    - Claude 3.5 Sonnet / Claude 3 Opus / Claude 3 Haiku support
-    - Proper system message handling (Anthropic uses a dedicated field)
-    - Streaming support
-    - Automatic retry with exponential backoff
-    - Rate limiting and cost tracking
+功能特性：
+    - 支持 Claude 3.5 Sonnet / Claude 3 Opus / Claude 3 Haiku
+    - 正确处理系统消息（Anthropic 使用专用字段）
+    - 流式输出支持
+    - 自动重试（指数退避）
+    - 速率限制和成本跟踪
 
-Reference:
+参考：
     - Anthropic API: https://docs.anthropic.com/en/docs/
-    - Claude models: https://docs.anthropic.com/en/docs/about-claude/models
+    - Claude 模型: https://docs.anthropic.com/en/docs/about-claude/models
 """
 
 import time
@@ -29,36 +29,29 @@ from .base import (
 
 logger = logging.getLogger(__name__)
 
-# Default max tokens for Claude models (required by the API)
+# Claude 模型的默认最大 token 数（API 必须参数）
 _DEFAULT_MAX_TOKENS = 4096
 
 
 class AnthropicLLM:
     """
-    Anthropic Claude LLM provider.
+    Anthropic Claude LLM 提供者。
 
-    Claude's API differs from OpenAI in a few important ways:
+    Claude 的 API 与 OpenAI 有几个重要区别：
 
-    1. ``system`` is a top-level parameter, not a message role.
-    2. ``max_tokens`` is **required** (not optional).
-    3. The response format wraps content in a ``content`` list.
+    1. ``system`` 是顶层参数，而非消息角色。
+    2. ``max_tokens`` 是**必填的**（非可选）。
+    3. 响应格式将内容包装在 ``content`` 列表中。
 
-    Args:
-        model_name: Claude model name (default: ``"claude-3-5-sonnet-20241022"``).
-        api_key: Anthropic API key. Falls back to ``ANTHROPIC_API_KEY`` env var.
-        max_tokens: Default max completion tokens (default: 4096).
-        temperature: Default temperature (default: 0.7).
-        timeout: Request timeout in seconds (default: 120).
-        max_retries: Retry attempts for transient errors (default: 3).
-        rate_limit: ``RateLimitConfig`` instance or dict.
-        **kwargs: Additional configuration.
-
-    Example::
-
-        from llm_assessment.providers.anthropic_provider import AnthropicLLM
-
-        llm = AnthropicLLM(api_key="sk-ant-...")
-        print(llm.generate("Explain quantum computing in one sentence."))
+    参数：
+        model_name: Claude 模型名称（默认: ``"claude-3-5-sonnet-20241022"``）。
+        api_key: Anthropic API 密钥。回退到 ``ANTHROPIC_API_KEY`` 环境变量。
+        max_tokens: 默认最大完成 token 数（默认: 4096）。
+        temperature: 默认温度（默认: 0.7）。
+        timeout: 请求超时（秒，默认: 120）。
+        max_retries: 瞬态错误重试次数（默认: 3）。
+        rate_limit: ``RateLimitConfig`` 实例或字典。
+        **kwargs: 其他配置。
     """
 
     def __init__(self, model_name="claude-3-5-sonnet-20241022", **kwargs):
@@ -66,30 +59,30 @@ class AnthropicLLM:
         self.model_name = model_name
         self.config = kwargs
 
-        # Backward-compat
+        # 向后兼容字段
         self.call_count = 0
         self.total_tokens = 0
 
-        # Usage tracking
+        # 用量跟踪
         self._usage = UsageStats()
 
-        # Default params
+        # 默认参数
         self._max_tokens = kwargs.pop("max_tokens", _DEFAULT_MAX_TOKENS)
         self._temperature = kwargs.pop("temperature", 0.7)
         self._timeout = kwargs.pop("timeout", 120)
 
-        # Retry
+        # 重试配置
         self._retry_config = RetryConfig(
             max_retries=kwargs.pop("max_retries", 3)
         )
 
-        # Rate limiter
+        # 速率限制器
         rl_cfg = kwargs.pop("rate_limit", None)
         if isinstance(rl_cfg, dict):
             rl_cfg = RateLimitConfig(**rl_cfg)
         self._rate_limiter = TokenBucketRateLimiter(rl_cfg)
 
-        # ---- Create Anthropic client (lazy import) ----
+        # ---- 创建 Anthropic 客户端（延迟导入） ----
         try:
             import anthropic
         except ImportError:
@@ -109,7 +102,7 @@ class AnthropicLLM:
 
         self.client = anthropic.Anthropic(**client_kwargs)
 
-        # BaseLLM init
+        # BaseLLM 初始化
         try:
             from ..core.llm_wrapper import BaseLLM
             if isinstance(self, BaseLLM):
@@ -118,13 +111,13 @@ class AnthropicLLM:
             pass
 
     # ------------------------------------------------------------------ #
-    #  Core generation
+    #  核心生成方法
     # ------------------------------------------------------------------ #
 
     @retry_on_error
     def generate(self, prompt, **kwargs):
         # type: (str, **Any) -> str
-        """Generate a response from a single prompt."""
+        """从单个提示词生成响应"""
         messages = [{"role": "user", "content": prompt}]
         return self._create_message(messages, **kwargs)
 
@@ -132,33 +125,33 @@ class AnthropicLLM:
     def chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
         """
-        Multi-turn chat completion.
+        多轮对话完成。
 
-        System messages in ``messages`` are extracted and passed via
-        Anthropic's ``system`` parameter.  The remaining messages must
-        alternate between ``user`` and ``assistant`` roles.
+        ``messages`` 中的系统消息会被提取并通过
+        Anthropic 的 ``system`` 参数传递。其余消息必须
+        在 ``user`` 和 ``assistant`` 角色之间交替。
         """
         return self._create_message(messages, **kwargs)
 
     # ------------------------------------------------------------------ #
-    #  Streaming
+    #  流式输出
     # ------------------------------------------------------------------ #
 
     def stream_generate(self, prompt, **kwargs):
         # type: (str, **Any) -> Iterator[str]
-        """Stream a response from a single prompt."""
+        """从单个提示词流式生成响应"""
         messages = [{"role": "user", "content": prompt}]
         for chunk in self._stream_message(messages, **kwargs):
             yield chunk
 
     def stream_chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Stream a multi-turn chat completion."""
+        """流式多轮对话完成"""
         for chunk in self._stream_message(messages, **kwargs):
             yield chunk
 
     # ------------------------------------------------------------------ #
-    #  Batch
+    #  批量生成
     # ------------------------------------------------------------------ #
 
     def batch_generate(self, prompts, max_workers=4, **kwargs):
@@ -181,7 +174,7 @@ class AnthropicLLM:
         return results
 
     # ------------------------------------------------------------------ #
-    #  Health check
+    #  健康检查
     # ------------------------------------------------------------------ #
 
     def health_check(self):
@@ -206,7 +199,7 @@ class AnthropicLLM:
             }
 
     # ------------------------------------------------------------------ #
-    #  Stats
+    #  统计信息
     # ------------------------------------------------------------------ #
 
     def get_stats(self):
@@ -221,16 +214,16 @@ class AnthropicLLM:
         return "AnthropicLLM(model='{}')".format(self.model_name)
 
     # ------------------------------------------------------------------ #
-    #  Internals
+    #  内部实现
     # ------------------------------------------------------------------ #
 
     @staticmethod
     def _extract_system_message(messages):
         # type: (List[Dict[str, str]]) -> tuple
         """
-        Separate system messages from conversation messages.
+        将系统消息与对话消息分离。
 
-        Returns:
+        返回：
             (system_text, filtered_messages)
         """
         system_parts = []
@@ -244,9 +237,9 @@ class AnthropicLLM:
 
         system_text = "\n\n".join(system_parts) if system_parts else None
 
-        # Anthropic requires messages to start with a "user" message
-        # and alternate roles.  If the first message is "assistant",
-        # prepend a placeholder user message.
+        # Anthropic 要求消息以 "user" 角色开始
+        # 并且角色交替。如果第一条消息是 "assistant"，
+        # 则前置一个占位符 user 消息。
         if filtered and filtered[0].get("role") == "assistant":
             filtered.insert(0, {"role": "user", "content": "(continue)"})
 
@@ -254,7 +247,7 @@ class AnthropicLLM:
 
     def _create_message(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
-        """Non-streaming message creation."""
+        """非流式消息创建"""
         self._rate_limiter.acquire(estimate_tokens(str(messages)))
 
         system_text, filtered_messages = self._extract_system_message(messages)
@@ -271,13 +264,13 @@ class AnthropicLLM:
         )
         latency_ms = (time.time() - start) * 1000
 
-        # Extract usage
+        # 提取用量信息
         usage = response.usage
         prompt_tokens = usage.input_tokens if usage else 0
         completion_tokens = usage.output_tokens if usage else 0
         self._track_usage(prompt_tokens, completion_tokens, latency_ms)
 
-        # Extract text content
+        # 提取文本内容
         content = ""
         for block in response.content:
             if block.type == "text":
@@ -287,7 +280,7 @@ class AnthropicLLM:
 
     def _stream_message(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Streaming message creation."""
+        """流式消息创建"""
         self._rate_limiter.acquire(estimate_tokens(str(messages)))
 
         system_text, filtered_messages = self._extract_system_message(messages)
@@ -310,7 +303,7 @@ class AnthropicLLM:
                 collected.append(text)
                 yield text
 
-            # Get final usage from the stream's final message
+            # 从流的最终消息中获取用量信息
             final_message = stream.get_final_message()
             if final_message and final_message.usage:
                 prompt_tokens = final_message.usage.input_tokens
@@ -333,7 +326,7 @@ class AnthropicLLM:
         temperature = overrides.pop("temperature", self._temperature)
         kwargs["temperature"] = temperature
 
-        # Pass through safe keys
+        # 透传安全的 key
         safe_keys = {"top_p", "top_k", "stop_sequences", "metadata"}
         for k in safe_keys:
             if k in overrides:

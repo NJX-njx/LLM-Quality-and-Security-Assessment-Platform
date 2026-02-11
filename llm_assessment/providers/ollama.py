@@ -1,17 +1,17 @@
 """
-Ollama LLM Provider — Local model inference via Ollama REST API.
+Ollama LLM 提供者 — 通过 Ollama REST API 进行本地模型推理。
 
-Zero-cost local model inference supporting Llama 3, Mistral, Qwen, Gemma,
-and any model available through Ollama's model library.
+零成本本地模型推理，支持 Llama 3、Mistral、Qwen、Gemma、
+以及 Ollama 模型库中的任何模型。
 
-Features:
-    - No API key required (runs entirely locally)
-    - Streaming support
-    - Multi-model management (pull, list, check availability)
-    - Configurable generation parameters (temperature, top_p, etc.)
-    - Automatic model pulling on first use (optional)
+功能特性：
+    - 无需 API 密钥（完全本地运行）
+    - 流式输出支持
+    - 多模型管理（拉取、列表、检查可用性）
+    - 可配置生成参数（temperature、top_p 等）
+    - 首次使用时自动拉取模型（可选）
 
-Reference:
+参考：
     - Ollama: https://ollama.com
     - REST API: https://github.com/ollama/ollama/blob/main/docs/api.md
 """
@@ -35,34 +35,19 @@ logger = logging.getLogger(__name__)
 
 class OllamaLLM:
     """
-    Ollama local LLM provider.
+    Ollama 本地 LLM 提供者。
 
-    Communicates with a locally running Ollama server via its REST API.
+    通过 REST API 与本地运行的 Ollama 服务器通信。
 
-    Args:
-        model_name: Model tag (default: ``"llama3.2"``).
-            Use ``ollama list`` to see available models.
-        base_url: Ollama server URL (default: ``"http://localhost:11434"``).
-        timeout: Request timeout in seconds (default: 300 — local inference
-            can be slow on CPU).
-        temperature: Default temperature (default: 0.7).
-        num_ctx: Context window size (default: model's built-in).
-        auto_pull: Automatically pull a model if it's not found locally
-            (default: ``False``).
-        **kwargs: Additional configuration.
-
-    Example::
-
-        from llm_assessment.providers.ollama import OllamaLLM
-
-        llm = OllamaLLM(model_name="llama3.2")
-        print(llm.generate("What is machine learning?"))
-
-        # Use a different model
-        llm = OllamaLLM(model_name="qwen2:7b")
-
-        # Check available models
-        print(llm.list_models())
+    参数：
+        model_name: 模型标签（默认: ``"llama3.2"``）。
+            使用 ``ollama list`` 查看可用模型。
+        base_url: Ollama 服务器 URL（默认: ``"http://localhost:11434"``）。
+        timeout: 请求超时（秒，默认: 300 — CPU 推理可能较慢）。
+        temperature: 默认温度（默认: 0.7）。
+        num_ctx: 上下文窗口大小（默认: 模型内置值）。
+        auto_pull: 未找到时自动拉取模型（默认: ``False``）。
+        **kwargs: 其他配置。
     """
 
     def __init__(self, model_name="llama3.2", **kwargs):
@@ -70,11 +55,11 @@ class OllamaLLM:
         self.model_name = model_name
         self.config = kwargs
 
-        # Backward-compat
+        # 向后兼容字段
         self.call_count = 0
         self.total_tokens = 0
 
-        # Usage tracking (all local — zero cost)
+        # 用量跟踪（本地运行 — 零成本）
         self._usage = UsageStats()
 
         self.base_url = kwargs.pop("base_url", "http://localhost:11434")
@@ -83,19 +68,19 @@ class OllamaLLM:
         self._num_ctx = kwargs.pop("num_ctx", None)
         self._auto_pull = kwargs.pop("auto_pull", False)
 
-        # Retry (for transient connection errors)
+        # 重试（用于瞬态连接错误）
         self._retry_config = RetryConfig(
             max_retries=kwargs.pop("max_retries", 2),
             base_delay=0.5,
         )
 
-        # Rate limiter (usually not needed locally, but available)
+        # 速率限制器（本地通常不需要，但可用）
         rl_cfg = kwargs.pop("rate_limit", RateLimitConfig(enabled=False))
         if isinstance(rl_cfg, dict):
             rl_cfg = RateLimitConfig(**rl_cfg)
         self._rate_limiter = TokenBucketRateLimiter(rl_cfg)
 
-        # Lazy import
+        # 延迟导入
         try:
             import requests  # noqa: F401
         except ImportError:
@@ -104,7 +89,7 @@ class OllamaLLM:
                 "Install it with: pip install requests>=2.28.0"
             )
 
-        # BaseLLM init
+        # BaseLLM 初始化
         try:
             from ..core.llm_wrapper import BaseLLM
             if isinstance(self, BaseLLM):
@@ -113,13 +98,13 @@ class OllamaLLM:
             pass
 
     # ------------------------------------------------------------------ #
-    #  Core generation
+    #  核心生成方法
     # ------------------------------------------------------------------ #
 
     @retry_on_error
     def generate(self, prompt, **kwargs):
         # type: (str, **Any) -> str
-        """Generate a response using Ollama's /api/generate endpoint."""
+        """使用 Ollama 的 /api/generate 端点生成响应"""
         import requests
 
         self._ensure_model_available()
@@ -132,7 +117,7 @@ class OllamaLLM:
             "options": self._build_options(kwargs),
         }
 
-        # Optional system prompt
+        # 可选系统提示词
         system = kwargs.get("system")
         if system:
             payload["system"] = system
@@ -149,7 +134,7 @@ class OllamaLLM:
         data = resp.json()
         content = data.get("response", "")
 
-        # Ollama returns eval_count / prompt_eval_count when available
+        # Ollama 在可用时返回 eval_count / prompt_eval_count
         prompt_tokens = data.get("prompt_eval_count", 0) or estimate_tokens(prompt)
         completion_tokens = data.get("eval_count", 0) or estimate_tokens(content)
         self._track_usage(prompt_tokens, completion_tokens, latency_ms)
@@ -159,7 +144,7 @@ class OllamaLLM:
     @retry_on_error
     def chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> str
-        """Multi-turn chat using Ollama's /api/chat endpoint."""
+        """使用 Ollama 的 /api/chat 端点进行多轮对话"""
         import requests
 
         self._ensure_model_available()
@@ -191,12 +176,12 @@ class OllamaLLM:
         return content
 
     # ------------------------------------------------------------------ #
-    #  Streaming
+    #  流式输出
     # ------------------------------------------------------------------ #
 
     def stream_generate(self, prompt, **kwargs):
         # type: (str, **Any) -> Iterator[str]
-        """Stream generation via Ollama's streaming API."""
+        """通过 Ollama 流式 API 生成响应"""
         import requests
 
         self._ensure_model_available()
@@ -236,7 +221,7 @@ class OllamaLLM:
                 collected.append(text)
                 yield text
 
-            # Final chunk contains usage stats
+            # 最后一个 chunk 包含用量统计
             if data.get("done"):
                 prompt_tokens = data.get("prompt_eval_count", 0)
                 completion_tokens = data.get("eval_count", 0)
@@ -249,7 +234,7 @@ class OllamaLLM:
 
     def stream_chat(self, messages, **kwargs):
         # type: (List[Dict[str, str]], **Any) -> Iterator[str]
-        """Stream chat via Ollama's streaming API."""
+        """通过 Ollama 流式 API 进行对话"""
         import requests
 
         self._ensure_model_available()
@@ -297,16 +282,16 @@ class OllamaLLM:
         self._track_usage(prompt_tokens, completion_tokens, latency_ms)
 
     # ------------------------------------------------------------------ #
-    #  Batch
+    #  批量生成
     # ------------------------------------------------------------------ #
 
     def batch_generate(self, prompts, max_workers=2, **kwargs):
         # type: (List[str], int, **Any) -> List[str]
         """
-        Batch generation.
+        批量生成。
 
-        Note: Ollama processes sequentially on most hardware, so
-        ``max_workers`` should be kept low (1-2) to avoid contention.
+        注意：Ollama 在大多数硬件上顺序处理，``max_workers``
+        应保持较低（1-2）以避免竞争。
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -326,17 +311,17 @@ class OllamaLLM:
         return results
 
     # ------------------------------------------------------------------ #
-    #  Health check & model management
+    #  健康检查和模型管理
     # ------------------------------------------------------------------ #
 
     def health_check(self):
         # type: () -> Dict[str, Any]
-        """Check Ollama server connectivity and model availability."""
+        """检查 Ollama 服务器连接性和模型可用性"""
         import requests
 
         start = time.time()
         try:
-            # Check server
+            # 检查服务器
             resp = requests.get(
                 "{}/api/tags".format(self.base_url),
                 timeout=5,
@@ -354,7 +339,7 @@ class OllamaLLM:
                 "latency_ms": round(latency, 2),
                 "model": self.model_name,
                 "model_available": model_available,
-                "available_models": models[:10],  # First 10
+                "available_models": models[:10],  # 前 10 个
             }
         except Exception as e:
             latency = (time.time() - start) * 1000
@@ -368,7 +353,7 @@ class OllamaLLM:
 
     def list_models(self):
         # type: () -> List[str]
-        """List all locally available Ollama models."""
+        """列出所有本地可用的 Ollama 模型"""
         import requests
 
         resp = requests.get(
@@ -380,7 +365,7 @@ class OllamaLLM:
 
     def pull_model(self, model_name=None):
         # type: (Optional[str]) -> None
-        """Pull (download) a model from the Ollama library."""
+        """从 Ollama 模型库拉取（下载）模型"""
         import requests
 
         model = model_name or self.model_name
@@ -389,13 +374,13 @@ class OllamaLLM:
         resp = requests.post(
             "{}/api/pull".format(self.base_url),
             json={"name": model, "stream": False},
-            timeout=3600,  # Models can be large
+            timeout=3600,  # 模型可能很大
         )
         resp.raise_for_status()
         logger.info("Model '%s' pulled successfully.", model)
 
     # ------------------------------------------------------------------ #
-    #  Stats
+    #  统计信息
     # ------------------------------------------------------------------ #
 
     def get_stats(self):
@@ -404,7 +389,7 @@ class OllamaLLM:
         stats["model_name"] = self.model_name
         stats["call_count"] = self._usage.total_calls
         stats["total_tokens"] = self._usage.total_tokens
-        stats["total_cost_usd"] = 0.0  # Always free
+        stats["total_cost_usd"] = 0.0  # 本地始终免费
         return stats
 
     def __repr__(self):
@@ -413,12 +398,12 @@ class OllamaLLM:
         )
 
     # ------------------------------------------------------------------ #
-    #  Internals
+    #  内部实现
     # ------------------------------------------------------------------ #
 
     def _ensure_model_available(self):
         # type: () -> None
-        """Pull the model automatically if configured and not present."""
+        """如果已配置且模型不存在，则自动拉取"""
         if not self._auto_pull:
             return
 
@@ -432,11 +417,11 @@ class OllamaLLM:
             if resp.status_code == 404:
                 self.pull_model()
         except Exception:
-            pass  # Will fail later with a clearer error
+            pass  # 将在后续操作中以更清晰的错误失败
 
     def _build_options(self, kwargs):
         # type: (Dict[str, Any]) -> Dict[str, Any]
-        """Build Ollama-specific generation options."""
+        """构建 Ollama 特定的生成选项"""
         options = {}
 
         temperature = kwargs.pop("temperature", self._temperature)
@@ -445,7 +430,7 @@ class OllamaLLM:
         if self._num_ctx:
             options["num_ctx"] = self._num_ctx
 
-        # Map common params to Ollama option names
+        # 将通用参数映射到 Ollama 选项名称
         param_map = {
             "top_p": "top_p",
             "top_k": "top_k",
@@ -467,6 +452,6 @@ class OllamaLLM:
         self._usage.total_completion_tokens += completion_tokens
         self._usage.total_tokens += prompt_tokens + completion_tokens
         self._usage.total_latency_ms += latency_ms
-        # Cost is always 0 for local models
+        # 本地模型成本始终为 0
         self.call_count = self._usage.total_calls
         self.total_tokens = self._usage.total_tokens

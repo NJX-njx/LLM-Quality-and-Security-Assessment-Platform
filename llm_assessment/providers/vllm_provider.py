@@ -1,27 +1,23 @@
 """
-vLLM Provider — High-performance local inference via vLLM's OpenAI-compatible server.
+vLLM 提供者 — 通过 vLLM 的 OpenAI 兼容服务器实现高性能本地推理。
 
-vLLM exposes an OpenAI-compatible REST API, so this provider uses the
-``openai`` SDK pointed at the vLLM endpoint.  This gives us streaming,
-batching, and tool support for free.
+vLLM 暴露了一个 OpenAI 兼容的 REST API，因此本提供者使用
+``openai`` SDK 指向 vLLM 端点。这使我们免费获得流式输出、
+批处理和工具支持。
 
-Features:
-    - OpenAI-compatible API (drop-in replacement)
-    - High-throughput batched inference
-    - Streaming support
-    - Multiple model serving via vLLM
+功能特性：
+    - OpenAI 兼容 API（可直接替换）
+    - 高吞吐量批处理推理
+    - 流式输出支持
+    - 多模型服务
 
-Prerequisites:
-    1. Install vLLM: ``pip install vllm``
-    2. Start the server::
+前置条件：
+    1. 安装 vLLM: ``pip install vllm``
+    2. 启动服务器
 
-        python -m vllm.entrypoints.openai.api_server \\
-            --model meta-llama/Llama-3.2-3B-Instruct \\
-            --port 8000
-
-Reference:
-    - vLLM docs: https://docs.vllm.ai/en/latest/
-    - OpenAI compat: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
+参考：
+    - vLLM 文档: https://docs.vllm.ai/en/latest/
+    - OpenAI 兼容: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
 """
 
 import time
@@ -42,26 +38,16 @@ logger = logging.getLogger(__name__)
 
 class VllmLLM:
     """
-    vLLM provider via its OpenAI-compatible server.
+    vLLM 提供者，通过其 OpenAI 兼容服务器。
 
-    Args:
-        model_name: Model name served by vLLM.
-        base_url: vLLM server URL (default: ``"http://localhost:8000/v1"``).
-        api_key: API key (vLLM uses ``"EMPTY"`` by default).
-        temperature: Default temperature (default: 0.7).
-        max_tokens: Default max tokens (default: 1024).
-        timeout: Request timeout (default: 300s — large models can be slow).
-        **kwargs: Additional configuration.
-
-    Example::
-
-        from llm_assessment.providers.vllm_provider import VllmLLM
-
-        llm = VllmLLM(
-            model_name="meta-llama/Llama-3.2-3B-Instruct",
-            base_url="http://localhost:8000/v1",
-        )
-        print(llm.generate("What is AI?"))
+    参数：
+        model_name: vLLM 服务的模型名称。
+        base_url: vLLM 服务器 URL（默认: ``"http://localhost:8000/v1"``）。
+        api_key: API 密钥（vLLM 默认使用 ``"EMPTY"``）。
+        temperature: 默认温度（默认: 0.7）。
+        max_tokens: 默认最大 token 数（默认: 1024）。
+        timeout: 请求超时（默认: 300秒 — 大模型可能较慢）。
+        **kwargs: 其他配置。
     """
 
     def __init__(self, model_name="meta-llama/Llama-3.2-3B-Instruct", **kwargs):
@@ -77,18 +63,18 @@ class VllmLLM:
         self._max_tokens = kwargs.pop("max_tokens", 1024)
         self._timeout = kwargs.pop("timeout", 300)
 
-        # Retry
+        # 重试配置
         self._retry_config = RetryConfig(
             max_retries=kwargs.pop("max_retries", 2)
         )
 
-        # Rate limiter (usually not needed for local vLLM)
+        # 速率限制器（本地 vLLM 通常不需要）
         rl_cfg = kwargs.pop("rate_limit", RateLimitConfig(enabled=False))
         if isinstance(rl_cfg, dict):
             rl_cfg = RateLimitConfig(**rl_cfg)
         self._rate_limiter = TokenBucketRateLimiter(rl_cfg)
 
-        # ---- OpenAI client pointed at vLLM ----
+        # ---- 指向 vLLM 的 OpenAI 客户端 ----
         try:
             import openai
         except ImportError:
@@ -116,7 +102,7 @@ class VllmLLM:
             pass
 
     # ------------------------------------------------------------------ #
-    #  Core generation
+    #  核心生成方法
     # ------------------------------------------------------------------ #
 
     @retry_on_error
@@ -131,7 +117,7 @@ class VllmLLM:
         return self._chat_completion(messages, **kwargs)
 
     # ------------------------------------------------------------------ #
-    #  Streaming
+    #  流式输出
     # ------------------------------------------------------------------ #
 
     def stream_generate(self, prompt, **kwargs):
@@ -146,16 +132,16 @@ class VllmLLM:
             yield chunk
 
     # ------------------------------------------------------------------ #
-    #  Batch
+    #  批量生成
     # ------------------------------------------------------------------ #
 
     def batch_generate(self, prompts, max_workers=4, **kwargs):
         # type: (List[str], int, **Any) -> List[str]
         """
-        Batch generation.
+        批量生成。
 
-        vLLM handles concurrent requests efficiently via continuous
-        batching, so using multiple workers is beneficial.
+        vLLM 通过连续批处理高效处理并发请求，
+        因此使用多线程是有益的。
         """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -174,15 +160,15 @@ class VllmLLM:
         return results
 
     # ------------------------------------------------------------------ #
-    #  Health check
+    #  健康检查
     # ------------------------------------------------------------------ #
 
     def health_check(self):
         # type: () -> Dict[str, Any]
-        """Check vLLM server connectivity."""
+        """检查 vLLM 服务器连接性"""
         start = time.time()
         try:
-            # List available models
+            # 列出可用模型
             models = self.client.models.list()
             model_ids = [m.id for m in models.data]
             latency = (time.time() - start) * 1000
@@ -207,7 +193,7 @@ class VllmLLM:
             }
 
     # ------------------------------------------------------------------ #
-    #  Stats
+    #  统计信息
     # ------------------------------------------------------------------ #
 
     def get_stats(self):
@@ -223,7 +209,7 @@ class VllmLLM:
         return "VllmLLM(model='{}')".format(self.model_name)
 
     # ------------------------------------------------------------------ #
-    #  Internals (reuse OpenAI-compatible API)
+    #  内部实现（复用 OpenAI 兼容 API）
     # ------------------------------------------------------------------ #
 
     def _chat_completion(self, messages, **kwargs):
