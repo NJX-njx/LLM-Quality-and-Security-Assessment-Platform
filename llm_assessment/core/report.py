@@ -2,9 +2,8 @@
 Report generation for assessment results
 """
 
-from typing import Dict, Any, Optional
-import json
-from datetime import datetime
+from typing import Dict, Any
+import html
 
 
 class ReportGenerator:
@@ -105,7 +104,12 @@ class ReportGenerator:
         summary = self.results.get("summary", {})
         metadata = self.results.get("metadata", {})
         
-        html = f"""<!DOCTYPE html>
+        # Escape HTML to prevent injection
+        model_name = html.escape(metadata.get('model_name', 'Unknown'))
+        start_time = html.escape(metadata.get('start_time', 'Unknown'))
+        health_rating = html.escape(summary.get('health_rating', 'Unknown'))
+        
+        html_content = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -209,16 +213,16 @@ class ReportGenerator:
 </head>
 <body>
     <div class="header">
-        <h1>🔍 LLM Quality & Security Assessment Report</h1>
-        <p>Model: {metadata.get('model_name', 'Unknown')}</p>
-        <p>Assessment Date: {metadata.get('start_time', 'Unknown')}</p>
+        <h1>🔍 LLM Quality &amp; Security Assessment Report</h1>
+        <p>Model: {model_name}</p>
+        <p>Assessment Date: {start_time}</p>
     </div>
     
     <div class="summary-cards">
         <div class="card">
             <h3>Overall Health</h3>
             <div class="score">{summary.get('overall_health_score', 0):.1f}</div>
-            <div class="rating">{summary.get('health_rating', 'Unknown')}</div>
+            <div class="rating">{health_rating}</div>
         </div>
         <div class="card">
             <h3>Capability</h3>
@@ -239,31 +243,35 @@ class ReportGenerator:
 """
         
         # Benchmark section
-        html += """
+        html_content += """
     <div class="section">
         <h2>📊 Capability Benchmarks</h2>
 """
         for result in self.results.get("benchmark_results", []):
-            html += f"""
+            name = html.escape(result['name'])
+            category = html.escape(result['category'])
+            html_content += f"""
         <div class="test-result">
-            <h4>{result['name']} ({result['category']})</h4>
+            <h4>{name} ({category})</h4>
             <div class="progress-bar">
                 <div class="progress-fill" style="width: {result['score']:.0f}%"></div>
             </div>
             <p>Score: {result['score']:.1f}% ({result['correct_answers']}/{result['total_questions']} correct)</p>
         </div>
 """
-        html += "    </div>\n"
+        html_content += "    </div>\n"
         
         # Security section
-        html += """
+        html_content += """
     <div class="section">
         <h2>🛡️ Security Red Team Tests</h2>
 """
         for result in self.results.get("red_teaming_results", []):
-            html += f"""
+            name = html.escape(result['name'])
+            category = html.escape(result['category'])
+            html_content += f"""
         <div class="test-result">
-            <h4>{result['name']} ({result['category']})</h4>
+            <h4>{name} ({category})</h4>
             <div class="progress-bar">
                 <div class="progress-fill" style="width: {result['security_score']:.0f}%"></div>
             </div>
@@ -271,22 +279,24 @@ class ReportGenerator:
             <p>Vulnerabilities Found: {result['vulnerabilities_found']}/{result['total_tests']}</p>
 """
             if result['vulnerabilities_found'] > 0:
-                html += """            <div class="vulnerability">
+                html_content += """            <div class="vulnerability">
                 <strong>⚠️ Vulnerabilities detected!</strong>
             </div>
 """
-            html += "        </div>\n"
-        html += "    </div>\n"
+            html_content += "        </div>\n"
+        html_content += "    </div>\n"
         
         # Alignment section
-        html += """
+        html_content += """
     <div class="section">
         <h2>✨ Alignment Verification</h2>
 """
         for result in self.results.get("alignment_results", []):
-            html += f"""
+            name = html.escape(result['name'])
+            category = html.escape(result['category'])
+            html_content += f"""
         <div class="test-result">
-            <h4>{result['name']} ({result['category']})</h4>
+            <h4>{name} ({category})</h4>
             <div class="progress-bar">
                 <div class="progress-fill" style="width: {result['alignment_score']:.0f}%"></div>
             </div>
@@ -294,25 +304,26 @@ class ReportGenerator:
             <p>Passed Tests: {result['passed_tests']}/{result['total_tests']}</p>
         </div>
 """
-        html += "    </div>\n"
+        html_content += "    </div>\n"
         
         # Recommendations
-        html += """
+        html_content += """
     <div class="section">
         <h2>💡 Recommendations</h2>
         <ul>
 """
         for rec in self._generate_recommendations():
-            html += f"            <li>{rec}</li>\n"
-        html += """        </ul>
+            escaped_rec = html.escape(rec)
+            html_content += f"            <li>{escaped_rec}</li>\n"
+        html_content += """        </ul>
     </div>
 """
         
-        html += """
+        html_content += """
 </body>
 </html>
 """
-        return html
+        return html_content
     
     def _generate_recommendations(self) -> list:
         """Generate recommendations based on results"""
@@ -357,7 +368,7 @@ class ReportGenerator:
         else:
             content = self.generate_text_report()
         
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
         
         print(f"\nReport saved to: {filepath}")

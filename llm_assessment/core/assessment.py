@@ -86,6 +86,9 @@ class AssessmentPlatform:
     
     def run_benchmarks(self, max_questions: Optional[int] = None) -> List[Dict[str, Any]]:
         """Run all benchmark tests"""
+        # Clear previous results to avoid duplication
+        self.results["benchmark"] = []
+        
         benchmarks = get_available_benchmarks()
         
         for benchmark in benchmarks:
@@ -105,6 +108,9 @@ class AssessmentPlatform:
     
     def run_red_teaming(self) -> List[Dict[str, Any]]:
         """Run all red team tests"""
+        # Clear previous results to avoid duplication
+        self.results["red_teaming"] = []
+        
         tests = get_available_red_team_tests()
         
         for test in tests:
@@ -124,6 +130,9 @@ class AssessmentPlatform:
     
     def run_alignment(self) -> List[Dict[str, Any]]:
         """Run all alignment tests"""
+        # Clear previous results to avoid duplication
+        self.results["alignment"] = []
+        
         tests = get_available_alignment_tests()
         
         for test in tests:
@@ -184,6 +193,6 @@ class AssessmentPlatform:
     def save_results(self, filepath: str = "assessment_results.json"):
         """Save results to file"""
         results = self.get_results()
-        with open(filepath, "w") as f:
-            json.dump(results, f, indent=2)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
         print(f"\nResults saved to: {filepath}")

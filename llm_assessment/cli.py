@@ -5,7 +5,6 @@ Command-line interface for LLM Assessment Platform
 import click
 import json
 import os
-from pathlib import Path
 
 from .core.llm_wrapper import create_llm
 from .core.assessment import AssessmentPlatform
@@ -24,7 +23,7 @@ def main():
 
 
 @main.command()
-@click.option("--provider", default="mock", help="LLM provider (mock, openai)")
+@click.option("--provider", default="mock", type=click.Choice(["mock", "openai"]), help="LLM provider")
 @click.option("--model", default=None, help="Model name")
 @click.option("--api-key", default=None, help="API key (or set via environment)")
 @click.option("--max-questions", default=None, type=int, help="Limit benchmark questions")
@@ -51,8 +50,7 @@ def assess(provider, model, api_key, max_questions, output, report_format):
         llm = create_llm(provider=provider, **llm_kwargs)
         click.echo(f"✓ Initialized {provider} LLM")
     except Exception as e:
-        click.echo(f"❌ Error initializing LLM: {e}", err=True)
-        return
+        raise click.ClickException(f"Error initializing LLM: {e}")
     
     # Run assessment
     try:
@@ -81,14 +79,11 @@ def assess(provider, model, api_key, max_questions, output, report_format):
         click.echo("="*70)
         
     except Exception as e:
-        click.echo(f"❌ Error during assessment: {e}", err=True)
-        import traceback
-        traceback.print_exc()
-        return
+        raise click.ClickException(f"Error during assessment: {e}")
 
 
 @main.command()
-@click.option("--provider", default="mock", help="LLM provider")
+@click.option("--provider", default="mock", type=click.Choice(["mock", "openai"]), help="LLM provider")
 @click.option("--model", default=None, help="Model name")
 @click.option("--api-key", default=None, help="API key")
 @click.option("--max-questions", default=5, type=int, help="Questions per benchmark")
@@ -105,7 +100,11 @@ def benchmark(provider, model, api_key, max_questions):
     if api_key:
         llm_kwargs["api_key"] = api_key
     
-    llm = create_llm(provider=provider, **llm_kwargs)
+    try:
+        llm = create_llm(provider=provider, **llm_kwargs)
+    except Exception as e:
+        raise click.ClickException(f"Error initializing LLM: {e}")
+    
     platform = AssessmentPlatform(llm)
     
     click.echo("Running benchmarks...")
@@ -117,7 +116,7 @@ def benchmark(provider, model, api_key, max_questions):
 
 
 @main.command()
-@click.option("--provider", default="mock", help="LLM provider")
+@click.option("--provider", default="mock", type=click.Choice(["mock", "openai"]), help="LLM provider")
 @click.option("--model", default=None, help="Model name")
 @click.option("--api-key", default=None, help="API key")
 def security(provider, model, api_key):
@@ -133,7 +132,11 @@ def security(provider, model, api_key):
     if api_key:
         llm_kwargs["api_key"] = api_key
     
-    llm = create_llm(provider=provider, **llm_kwargs)
+    try:
+        llm = create_llm(provider=provider, **llm_kwargs)
+    except Exception as e:
+        raise click.ClickException(f"Error initializing LLM: {e}")
+    
     platform = AssessmentPlatform(llm)
     
     click.echo("Running security tests...")
@@ -145,7 +148,7 @@ def security(provider, model, api_key):
 
 
 @main.command()
-@click.option("--provider", default="mock", help="LLM provider")
+@click.option("--provider", default="mock", type=click.Choice(["mock", "openai"]), help="LLM provider")
 @click.option("--model", default=None, help="Model name")
 @click.option("--api-key", default=None, help="API key")
 def alignment(provider, model, api_key):
@@ -161,7 +164,11 @@ def alignment(provider, model, api_key):
     if api_key:
         llm_kwargs["api_key"] = api_key
     
-    llm = create_llm(provider=provider, **llm_kwargs)
+    try:
+        llm = create_llm(provider=provider, **llm_kwargs)
+    except Exception as e:
+        raise click.ClickException(f"Error initializing LLM: {e}")
+    
     platform = AssessmentPlatform(llm)
     
     click.echo("Running alignment tests...")
@@ -181,7 +188,7 @@ def report(results_file, format, output):
     Generate report from existing results file
     """
     try:
-        with open(results_file, "r") as f:
+        with open(results_file, "r", encoding="utf-8") as f:
             results = json.load(f)
         
         if not output:
@@ -193,7 +200,7 @@ def report(results_file, format, output):
         click.echo(f"✓ Report generated: {output}")
         
     except Exception as e:
-        click.echo(f"❌ Error generating report: {e}", err=True)
+        raise click.ClickException(f"Error generating report: {e}")
 
 
 if __name__ == "__main__":

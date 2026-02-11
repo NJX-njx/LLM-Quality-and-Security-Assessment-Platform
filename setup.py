@@ -1,6 +1,8 @@
 from setuptools import setup, find_packages
+from pathlib import Path
 
-with open("README.md", "r", encoding="utf-8") as fh:
+readme_path = Path(__file__).parent / "README.md"
+with open(readme_path, "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
@@ -25,15 +27,25 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "openai>=1.0.0",
-        "numpy>=1.24.0",
-        "pandas>=2.0.0",
         "click>=8.1.0",
         "tqdm>=4.65.0",
-        "pyyaml>=6.0.0",
-        "jinja2>=3.1.0",
-        "matplotlib>=3.7.0",
     ],
+    extras_require={
+        "openai": [
+            "openai>=1.0.0",
+        ],
+        "viz": [
+            "matplotlib>=3.7.0",
+            "numpy>=1.24.0",
+            "pandas>=2.0.0",
+        ],
+        "config": [
+            "pyyaml>=6.0.0",
+        ],
+        "templates": [
+            "jinja2>=3.1.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "llm-assess=llm_assessment.cli:main",

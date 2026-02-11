@@ -2,7 +2,7 @@
 Example: Custom benchmark implementation
 """
 
-from llm_assessment.benchmark.benchmarks import BaseBenchmark, BenchmarkResult
+from llm_assessment.benchmark.benchmarks import BaseBenchmark
 from llm_assessment.core.llm_wrapper import create_llm
 
 
