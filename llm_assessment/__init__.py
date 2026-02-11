@@ -1,13 +1,15 @@
 """
-LLM Quality and Security Assessment Platform
+LLM 质量与安全评估平台
 
-A unified platform for evaluating LLM capabilities, security, and alignment.
+统一的大语言模型评估平台，涵盖能力基准测试、安全红队测试和对齐验证三大维度。
 """
 
-__version__ = "0.1.0"
-__author__ = "LLM Assessment Team"
+__version__ = "0.2.0"  # 版本号
+__author__ = "LLM Assessment Team"  # 作者
 
-from .core.assessment import AssessmentPlatform
-from .core.report import ReportGenerator
+# 导入核心组件供外部使用
+from .core.assessment import AssessmentPlatform  # 评估平台主类
+from .core.report import ReportGenerator  # 报告生成器
+from .core.llm_wrapper import create_llm, BaseLLM  # LLM 工厂函数和基类
 
-__all__ = ["AssessmentPlatform", "ReportGenerator"]
+__all__ = ["AssessmentPlatform", "ReportGenerator", "create_llm", "BaseLLM"]

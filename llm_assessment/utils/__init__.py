@@ -1,1 +1,1 @@
-"""Utils module initialization"""
+"""工具模块初始化 - 包含评估指标、文本匹配、统计计算等通用工具函数"""

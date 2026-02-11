@@ -1,1 +1,1 @@
-"""Alignment module initialization"""
+"""对齐验证模块初始化 - 包含有用性、无害性、诚实性和公平性等对齐测试"""

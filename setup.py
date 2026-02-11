@@ -7,7 +7,7 @@ with open(readme_path, "r", encoding="utf-8") as fh:
 
 setup(
     name="llm-assessment-platform",
-    version="0.1.0",
+    version="0.2.0",
     author="LLM Assessment Team",
     description="A unified LLM quality and security assessment platform",
     long_description=long_description,
@@ -29,9 +29,23 @@ setup(
     install_requires=[
         "click>=8.1.0",
         "tqdm>=4.65.0",
+        "requests>=2.28.0",
     ],
     extras_require={
         "openai": [
+            "openai>=1.0.0",
+        ],
+        "anthropic": [
+            "anthropic>=0.18.0",
+        ],
+        "huggingface": [
+            "huggingface_hub>=0.20.0",
+        ],
+        "huggingface-local": [
+            "torch>=2.0.0",
+            "transformers>=4.35.0",
+        ],
+        "vllm": [
             "openai>=1.0.0",
         ],
         "viz": [
@@ -44,6 +58,16 @@ setup(
         ],
         "templates": [
             "jinja2>=3.1.0",
+        ],
+        "all-providers": [
+            "openai>=1.0.0",
+            "anthropic>=0.18.0",
+            "huggingface_hub>=0.20.0",
+        ],
+        "dev": [
+            "pytest>=7.4.0",
+            "black>=23.0",
+            "flake8>=6.0",
         ],
     },
     entry_points={

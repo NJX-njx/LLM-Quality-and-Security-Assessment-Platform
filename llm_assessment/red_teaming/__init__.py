@@ -1,1 +1,1 @@
-"""Red teaming module initialization"""
+"""红队测试模块初始化 - 包含越狱攻击、提示注入、数据泄露、有害内容等安全测试"""

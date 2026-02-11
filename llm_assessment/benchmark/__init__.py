@@ -1,1 +1,1 @@
-"""Benchmark module initialization"""
+"""基准测试模块初始化 - 包含 MMLU、推理、编程等能力评估基准测试"""
